@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   HeartHandshake,
-  DollarSign,
+  IndianRupee,
   Receipt,
   CheckCircle2,
   AlertCircle,
@@ -555,7 +555,7 @@ export default function App() {
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between text-slate-500 mb-2">
                       <span className="text-xs font-semibold uppercase tracking-wider">Promised vs Received</span>
-                      <DollarSign className="w-5 h-5 text-indigo-600" />
+                      <IndianRupee className="w-5 h-5 text-indigo-600" />
                     </div>
                     <div className="text-2xl font-bold font-mono tabular-nums text-slate-900">
                       {formatINR(data.metrics.totalReceivedMonetary)}
@@ -763,9 +763,17 @@ export default function App() {
             {activeTab === "contributions" && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Contribution & Pledge Management (₹ INR)</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">Track monetary commitments, partial payments, and in-kind donations securely.</p>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setActiveTab("dashboard")}
+                      className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      ← Back to Dashboard
+                    </button>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">Contribution & Pledge Management (₹ INR)</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">Track monetary commitments, partial payments, and in-kind donations securely.</p>
+                    </div>
                   </div>
                   <button
                     onClick={() => setShowNewContributionModal(true)}
@@ -823,9 +831,17 @@ export default function App() {
             {activeTab === "expenses" && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Expense & Receipt Management (₹ INR)</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">Upload supporting receipts, verify extracted values, and maintain clean audit records.</p>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setActiveTab("dashboard")}
+                      className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      ← Back to Dashboard
+                    </button>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">Expense & Receipt Management (₹ INR)</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">Upload supporting receipts, verify extracted values, and maintain clean audit records.</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
@@ -914,9 +930,17 @@ export default function App() {
             {activeTab === "tasks" && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">AI Follow-up Assistant & Tasks</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">Generate reviewable action items from event records and notes.</p>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setActiveTab("dashboard")}
+                      className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      ← Back to Dashboard
+                    </button>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">AI Follow-up Assistant & Tasks</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">Generate reviewable action items from event records and notes.</p>
+                    </div>
                   </div>
                   <button
                     onClick={() => setShowAiTaskModal(true)}
@@ -969,9 +993,19 @@ export default function App() {
             {/* Audit Trail Tab */}
             {activeTab === "audit" && (
               <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">Immutable Audit Trail</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Complete chronological log of financial record changes and workspace mutations.</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setActiveTab("dashboard")}
+                      className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      ← Back to Dashboard
+                    </button>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">Immutable Audit Trail</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">Complete chronological log of financial record changes and workspace mutations.</p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
