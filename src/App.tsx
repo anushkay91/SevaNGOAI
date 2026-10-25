@@ -16,12 +16,9 @@ import {
   Check,
   X,
   AlertTriangle,
-  Layers,
-  ChevronRight,
   ShieldCheck,
   TrendingUp,
-  Search,
-  Filter
+  Lock
 } from "lucide-react";
 
 interface DashboardData {
@@ -71,7 +68,7 @@ interface DashboardData {
     currency: string;
     category: string;
     description: string;
-    receiptUrl?: string;
+    receiptPath?: string;
     receiptStatus: "pending" | "verified" | "rejected";
     isFlaggedDuplicate?: boolean;
     isFlaggedMissingReceipt?: boolean;
@@ -96,8 +93,17 @@ interface DashboardData {
   }>;
 }
 
+// Helper to format currency in Indian Rupees (INR ₹)
+const formatINR = (amount: number) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0
+  }).format(amount);
+};
+
 export default function App() {
-  const [orgId, setOrgId] = useState("org-1");
+  const [session, setSession] = useState<{ user: any; organization: any; organizations: any[] } | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"dashboard" | "contributions" | "expenses" | "tasks" | "audit">("dashboard");
   const [data, setData] = useState<DashboardData | null>(null);
@@ -112,11 +118,11 @@ export default function App() {
   const [showAiTaskModal, setShowAiTaskModal] = useState(false);
 
   // Form states
-  const [newEventForm, setNewEventForm] = useState({ name: "", date: "", description: "", budget: 50000 });
+  const [newEventForm, setNewEventForm] = useState({ name: "", date: "", description: "", budget: 200000 });
   const [newContribForm, setNewContribForm] = useState({
     contributorName: "",
     contributionType: "monetary" as "monetary" | "in_kind",
-    promisedAmount: 1000,
+    promisedAmount: 25000,
     inKindDescription: "",
     commitmentDate: new Date().toISOString().split("T")[0],
     amountReceived: 0,
@@ -127,9 +133,8 @@ export default function App() {
   const [newExpenseForm, setNewExpenseForm] = useState({
     merchant: "",
     date: new Date().toISOString().split("T")[0],
-    amount: 0,
-    currency: "USD",
-    category: "Venue & Catering",
+    amount: 10000,
+    category: "Supplies",
     description: "",
     receiptStatus: "pending" as const
   });
@@ -145,13 +150,23 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [proposedTasks, setProposedTasks] = useState<any[]>([]);
 
+  // Fetch Session & Auth
+  const fetchSession = async () => {
+    try {
+      const res = await fetch("/api/auth/session");
+      if (!res.ok) throw new Error("Failed to load session");
+      const json = await res.json();
+      setSession(json);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
       const url = selectedEventId ? `/api/dashboard?eventId=${selectedEventId}` : `/api/dashboard`;
-      const res = await fetch(url, {
-        headers: { "x-org-id": orgId }
-      });
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch dashboard data");
       const json = await res.json();
       setData(json);
@@ -167,22 +182,43 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [orgId, selectedEventId]);
+    fetchSession();
+  }, []);
+
+  useEffect(() => {
+    if (session) {
+      fetchData();
+    }
+  }, [session, selectedEventId]);
+
+  const handleSwitchOrg = async (orgId: string) => {
+    try {
+      await fetch("/api/auth/switch-org", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId })
+      });
+      setSelectedEventId("");
+      await fetchSession();
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const res = await fetch("/api/events", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newEventForm)
       });
       if (!res.ok) throw new Error("Failed to create event");
       const created = await res.json();
       setSelectedEventId(created.id);
       setShowNewEventModal(false);
-      setNewEventForm({ name: "", date: "", description: "", budget: 50000 });
+      setNewEventForm({ name: "", date: "", description: "", budget: 200000 });
       fetchData();
     } catch (err: any) {
       alert(err.message);
@@ -195,7 +231,7 @@ export default function App() {
     try {
       const res = await fetch("/api/contributions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...newContribForm, eventId: data.activeEvent.id })
       });
       if (!res.ok) throw new Error("Failed to record contribution");
@@ -203,7 +239,7 @@ export default function App() {
       setNewContribForm({
         contributorName: "",
         contributionType: "monetary",
-        promisedAmount: 1000,
+        promisedAmount: 25000,
         inKindDescription: "",
         commitmentDate: new Date().toISOString().split("T")[0],
         amountReceived: 0,
@@ -225,7 +261,6 @@ export default function App() {
       formData.append("merchant", newExpenseForm.merchant);
       formData.append("date", newExpenseForm.date);
       formData.append("amount", newExpenseForm.amount.toString());
-      formData.append("currency", newExpenseForm.currency);
       formData.append("category", newExpenseForm.category);
       formData.append("description", newExpenseForm.description);
       formData.append("receiptStatus", newExpenseForm.receiptStatus);
@@ -235,7 +270,6 @@ export default function App() {
 
       const res = await fetch("/api/expenses", {
         method: "POST",
-        headers: { "x-org-id": orgId },
         body: formData
       });
       if (!res.ok) throw new Error("Failed to record expense");
@@ -243,9 +277,8 @@ export default function App() {
       setNewExpenseForm({
         merchant: "",
         date: new Date().toISOString().split("T")[0],
-        amount: 0,
-        currency: "USD",
-        category: "Venue & Catering",
+        amount: 10000,
+        category: "Supplies",
         description: "",
         receiptStatus: "pending"
       });
@@ -266,7 +299,6 @@ export default function App() {
 
       const res = await fetch("/api/receipts/ocr", {
         method: "POST",
-        headers: { "x-org-id": orgId },
         body: formData
       });
       if (!res.ok) throw new Error("OCR extraction failed");
@@ -282,16 +314,15 @@ export default function App() {
   const handleSaveOcrExpense = async () => {
     if (!ocrResult || !data?.activeEvent) return;
     try {
-      const { merchant, date, amount, currency, category, summary } = ocrResult.extracted;
+      const { merchant, date, amount, category, summary } = ocrResult.extracted;
       const res = await fetch("/api/expenses", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: data.activeEvent.id,
           merchant,
           date,
           amount,
-          currency,
           category,
           description: summary,
           receiptStatus: "pending"
@@ -313,7 +344,7 @@ export default function App() {
       setAiLoading(true);
       const res = await fetch("/api/ai/generate-tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventId: data.activeEvent.id, notes: aiNotes })
       });
       if (!res.ok) throw new Error("Failed to generate tasks");
@@ -331,7 +362,7 @@ export default function App() {
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: data.activeEvent.id,
           title: task.title,
@@ -354,7 +385,7 @@ export default function App() {
     try {
       const res = await fetch(`/api/expenses/${expenseId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ receiptStatus })
       });
       if (!res.ok) throw new Error("Failed to update expense status");
@@ -368,7 +399,7 @@ export default function App() {
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status })
       });
       if (!res.ok) throw new Error("Failed to update task");
@@ -381,7 +412,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
       {/* Top Bar Contract: 3 Zones */}
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-8">
+      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-8 shadow-xs">
         {/* Zone 1: Brand wordmark */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm">
@@ -391,12 +422,12 @@ export default function App() {
             <span className="text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap">
               SevaTrack AI
             </span>
-            <div className="text-xs text-slate-500 font-medium">NGO Contribution & Expense Coordinator</div>
+            <div className="text-xs text-slate-500 font-medium">NGO Coordinator (₹ INR)</div>
           </div>
         </div>
 
         {/* Zone 2: Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-slate-600">
+        <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-slate-600" aria-label="Main Navigation">
           <button
             onClick={() => setActiveTab("dashboard")}
             className={`transition-colors whitespace-nowrap py-1 ${activeTab === "dashboard" ? "text-indigo-600 font-semibold border-b-2 border-indigo-600" : "hover:text-slate-900"}`}
@@ -429,17 +460,25 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Zone 3: Primary Action & Org Switcher */}
+        {/* Zone 3: Primary Action & Secure Org Switcher */}
         <div className="flex items-center gap-3 shrink-0">
-          <select
-            value={orgId}
-            onChange={(e) => setOrgId(e.target.value)}
-            className="text-xs font-medium bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            aria-label="Select Organization"
-          >
-            <option value="org-1">Hope Foundation Global</option>
-            <option value="org-2">Clean Rivers Alliance</option>
-          </select>
+          {session && (
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-slate-400" />
+              <select
+                value={session.organization.id}
+                onChange={(e) => handleSwitchOrg(e.target.value)}
+                className="text-xs font-semibold bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label="Organization Tenant"
+              >
+                {session.organizations.map((org: any) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <button
             onClick={() => setShowNewEventModal(true)}
@@ -451,7 +490,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Event Toolbar & Sub-header */}
+      {/* Event Toolbar */}
       {data && data.events.length > 0 && (
         <div className="bg-white border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -473,10 +512,10 @@ export default function App() {
           {data.activeEvent && (
             <div className="flex items-center gap-6 text-xs text-slate-600">
               <div>
-                Budget: <span className="font-mono font-semibold text-slate-900">${data.activeEvent.budget.toLocaleString()}</span>
+                Budget: <span className="font-mono font-semibold text-slate-900">{formatINR(data.activeEvent.budget)}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
                 <span className="capitalize">{data.activeEvent.status}</span>
               </div>
             </div>
@@ -487,17 +526,17 @@ export default function App() {
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         {loading ? (
-          <div className="flex items-center justify-center py-24">
+          <div className="flex items-center justify-center py-24" aria-label="Loading content">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
           </div>
         ) : error ? (
-          <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+          <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm" role="alert">
             Error loading data: {error}
           </div>
         ) : !data || !data.activeEvent ? (
           <div className="text-center py-24 bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-800 mb-2">No Events Found</h2>
-            <p className="text-slate-500 text-sm mb-6">Create your first event workspace to start tracking contributions and expenses.</p>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">No Event Workspaces Found</h2>
+            <p className="text-slate-500 text-sm mb-6">Create your first event workspace to start tracking INR contributions and expenses.</p>
             <button
               onClick={() => setShowNewEventModal(true)}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 shadow-sm"
@@ -510,7 +549,7 @@ export default function App() {
             {/* Dashboard Tab */}
             {activeTab === "dashboard" && (
               <div className="space-y-8">
-                {/* Metrics Grid */}
+                {/* Metrics Grid (INR) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {/* Card 1 */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -518,22 +557,22 @@ export default function App() {
                       <span className="text-xs font-semibold uppercase tracking-wider">Promised vs Received</span>
                       <DollarSign className="w-5 h-5 text-indigo-600" />
                     </div>
-                    <div className="text-2xl font-bold font-mono text-slate-900">
-                      ${data.metrics.totalReceivedMonetary.toLocaleString()}
+                    <div className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+                      {formatINR(data.metrics.totalReceivedMonetary)}
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      of <span className="font-mono font-medium">${data.metrics.totalPromisedMonetary.toLocaleString()}</span> promised
+                      of <span className="font-mono tabular-nums font-medium">{formatINR(data.metrics.totalPromisedMonetary)}</span> promised
                     </div>
                   </div>
 
                   {/* Card 2 */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between text-slate-500 mb-2">
-                      <span className="text-xs font-semibold uppercase tracking-wider">Outstanding Cash</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider">Outstanding Pledges</span>
                       <Clock className="w-5 h-5 text-amber-600" />
                     </div>
-                    <div className="text-2xl font-bold font-mono text-slate-900">
-                      ${data.metrics.outstandingCommitments.toLocaleString()}
+                    <div className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+                      {formatINR(data.metrics.outstandingCommitments)}
                     </div>
                     <div className="text-xs text-amber-600 font-medium mt-1">
                       Pending donor payments
@@ -546,11 +585,11 @@ export default function App() {
                       <span className="text-xs font-semibold uppercase tracking-wider">Verified Expenses</span>
                       <Receipt className="w-5 h-5 text-emerald-600" />
                     </div>
-                    <div className="text-2xl font-bold font-mono text-slate-900">
-                      ${data.metrics.totalVerifiedExpenses.toLocaleString()}
+                    <div className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+                      {formatINR(data.metrics.totalVerifiedExpenses)}
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      <span className="font-mono font-medium">${data.metrics.expensesAwaitingVerification.toLocaleString()}</span> awaiting review
+                      <span className="font-mono tabular-nums font-medium">{formatINR(data.metrics.expensesAwaitingVerification)}</span> awaiting review
                     </div>
                   </div>
 
@@ -560,23 +599,22 @@ export default function App() {
                       <span className="text-xs font-semibold uppercase tracking-wider">Budget Utilization</span>
                       <TrendingUp className="w-5 h-5 text-blue-600" />
                     </div>
-                    <div className="text-2xl font-bold font-mono text-slate-900">
+                    <div className="text-2xl font-bold font-mono tabular-nums text-slate-900">
                       {data.metrics.budgetUtilization}%
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      Budget: <span className="font-mono font-medium">${data.metrics.budget.toLocaleString()}</span>
+                      Budget: <span className="font-mono tabular-nums font-medium">{formatINR(data.metrics.budget)}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Quick Actions / Subsections */}
+                {/* Content Sections */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  {/* Left 2 Cols: Recent Contributions & Expenses */}
                   <div className="lg:col-span-2 space-y-8">
-                    {/* Contributions Summary Widget */}
+                    {/* Contributions Summary */}
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-base font-bold text-slate-900">Recent Contributions</h3>
+                        <h3 className="text-base font-bold text-slate-900">Contributions & Pledges (₹ INR)</h3>
                         <button
                           onClick={() => setActiveTab("contributions")}
                           className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
@@ -585,7 +623,7 @@ export default function App() {
                         </button>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
+                        <table className="w-full text-left text-sm" aria-label="Contributions Summary">
                           <thead>
                             <tr className="border-b border-slate-100 text-xs text-slate-400 font-semibold">
                               <th className="pb-3">Contributor</th>
@@ -600,14 +638,14 @@ export default function App() {
                               <tr key={c.id} className="hover:bg-slate-50/50">
                                 <td className="py-3 font-medium text-slate-800">{c.contributorName}</td>
                                 <td className="py-3 text-slate-500 capitalize">{c.contributionType.replace("_", " ")}</td>
-                                <td className="py-3 text-right font-mono text-slate-800">
-                                  {c.contributionType === "monetary" ? `$${c.promisedAmount.toLocaleString()}` : "—"}
+                                <td className="py-3 text-right font-mono tabular-nums text-slate-800">
+                                  {c.contributionType === "monetary" ? formatINR(c.promisedAmount) : "—"}
                                 </td>
-                                <td className="py-3 text-right font-mono font-semibold text-slate-900">
-                                  {c.contributionType === "monetary" ? `$${c.amountReceived.toLocaleString()}` : c.inKindDescription}
+                                <td className="py-3 text-right font-mono tabular-nums font-semibold text-slate-900">
+                                  {c.contributionType === "monetary" ? formatINR(c.amountReceived) : c.inKindDescription}
                                 </td>
                                 <td className="py-3 text-center">
-                                  <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full capitalize ${
+                                  <span className={`inline-block px-2.5 py-0.5 text-xs font-medium rounded-full capitalize ${
                                     c.status === "received" ? "bg-emerald-50 text-emerald-700" :
                                     c.status === "partial" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"
                                   }`}>
@@ -616,20 +654,15 @@ export default function App() {
                                 </td>
                               </tr>
                             ))}
-                            {data.contributions.length === 0 && (
-                              <tr>
-                                <td colSpan={5} className="py-6 text-center text-slate-400 text-xs">No contributions recorded yet.</td>
-                              </tr>
-                            )}
                           </tbody>
                         </table>
                       </div>
                     </div>
 
-                    {/* Expenses Summary Widget */}
+                    {/* Expenses Summary */}
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-base font-bold text-slate-900">Recent Expenses & Receipts</h3>
+                        <h3 className="text-base font-bold text-slate-900">Expenses & Receipts (₹ INR)</h3>
                         <div className="flex items-center gap-3">
                           <button
                             onClick={() => setShowOcrModal(true)}
@@ -647,7 +680,7 @@ export default function App() {
                         </div>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
+                        <table className="w-full text-left text-sm" aria-label="Expenses Summary">
                           <thead>
                             <tr className="border-b border-slate-100 text-xs text-slate-400 font-semibold">
                               <th className="pb-3">Merchant</th>
@@ -661,11 +694,11 @@ export default function App() {
                               <tr key={e.id} className="hover:bg-slate-50/50">
                                 <td className="py-3 font-medium text-slate-800">{e.merchant}</td>
                                 <td className="py-3 text-slate-500">{e.category}</td>
-                                <td className="py-3 text-right font-mono font-semibold text-slate-900">
-                                  ${e.amount.toLocaleString()} {e.currency}
+                                <td className="py-3 text-right font-mono tabular-nums font-semibold text-slate-900">
+                                  {formatINR(e.amount)}
                                 </td>
                                 <td className="py-3 text-center">
-                                  <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full capitalize ${
+                                  <span className={`inline-block px-2.5 py-0.5 text-xs font-medium rounded-full capitalize ${
                                     e.receiptStatus === "verified" ? "bg-emerald-50 text-emerald-700" :
                                     e.receiptStatus === "rejected" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
                                   }`}>
@@ -674,18 +707,13 @@ export default function App() {
                                 </td>
                               </tr>
                             ))}
-                            {data.expenses.length === 0 && (
-                              <tr>
-                                <td colSpan={4} className="py-6 text-center text-slate-400 text-xs">No expenses recorded yet.</td>
-                              </tr>
-                            )}
                           </tbody>
                         </table>
                       </div>
                     </div>
                   </div>
 
-                  {/* Right Col: AI Follow-ups & Quick Actions */}
+                  {/* Right Column: AI Assistant & Tasks */}
                   <div className="space-y-6">
                     <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-sm">
                       <div className="flex items-center gap-2 mb-3">
@@ -693,7 +721,7 @@ export default function App() {
                         <h3 className="text-base font-bold">GenAI Follow-up Assistant</h3>
                       </div>
                       <p className="text-xs text-indigo-200 mb-4 leading-relaxed">
-                        Generate intelligent operational follow-up tasks for outstanding contributions, unverified receipts, and event notes without altering financial arithmetic.
+                        Generate intelligent operational follow-up tasks for outstanding INR commitments and unverified receipts securely.
                       </p>
                       <button
                         onClick={() => { setActiveTab("tasks"); setShowAiTaskModal(true); }}
@@ -703,10 +731,9 @@ export default function App() {
                       </button>
                     </div>
 
-                    {/* Open Tasks Widget */}
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-base font-bold text-slate-900">Priority Follow-up Tasks</h3>
+                        <h3 className="text-base font-bold text-slate-900">Priority Tasks</h3>
                         <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full">
                           {data.tasks.filter(t => t.status !== "completed").length} Open
                         </span>
@@ -725,9 +752,6 @@ export default function App() {
                             <p className="text-xs text-slate-500 mt-1 line-clamp-2">{t.explanation}</p>
                           </div>
                         ))}
-                        {data.tasks.filter(t => t.status !== "completed").length === 0 && (
-                          <p className="text-xs text-slate-400 text-center py-4">All follow-up tasks completed!</p>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -740,7 +764,7 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">Contribution & Pledge Management</h2>
+                    <h2 className="text-xl font-bold text-slate-900">Contribution & Pledge Management (₹ INR)</h2>
                     <p className="text-xs text-slate-500 mt-0.5">Track monetary commitments, partial payments, and in-kind donations securely.</p>
                   </div>
                   <button
@@ -753,7 +777,7 @@ export default function App() {
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left text-sm" aria-label="Contributions Table">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 font-semibold uppercase tracking-wider">
                       <tr>
                         <th className="px-6 py-4">Contributor</th>
@@ -772,11 +796,11 @@ export default function App() {
                             {c.notes && <div className="text-xs text-slate-400 font-normal mt-0.5">{c.notes}</div>}
                           </td>
                           <td className="px-6 py-4 text-slate-600 capitalize">{c.contributionType.replace("_", " ")}</td>
-                          <td className="px-6 py-4 text-right font-mono text-slate-800">
-                            {c.contributionType === "monetary" ? `$${c.promisedAmount.toLocaleString()}` : "—"}
+                          <td className="px-6 py-4 text-right font-mono tabular-nums text-slate-800">
+                            {c.contributionType === "monetary" ? formatINR(c.promisedAmount) : "—"}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono font-semibold text-slate-900">
-                            {c.contributionType === "monetary" ? `$${c.amountReceived.toLocaleString()}` : c.inKindDescription}
+                          <td className="px-6 py-4 text-right font-mono tabular-nums font-semibold text-slate-900">
+                            {c.contributionType === "monetary" ? formatINR(c.amountReceived) : c.inKindDescription}
                           </td>
                           <td className="px-6 py-4 text-center">
                             <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full capitalize ${
@@ -800,7 +824,7 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">Expense & Receipt Management</h2>
+                    <h2 className="text-xl font-bold text-slate-900">Expense & Receipt Management (₹ INR)</h2>
                     <p className="text-xs text-slate-500 mt-0.5">Upload supporting receipts, verify extracted values, and maintain clean audit records.</p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -822,7 +846,7 @@ export default function App() {
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left text-sm" aria-label="Expenses Table">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 font-semibold uppercase tracking-wider">
                       <tr>
                         <th className="px-6 py-4">Merchant</th>
@@ -845,8 +869,8 @@ export default function App() {
                             )}
                           </td>
                           <td className="px-6 py-4 text-slate-600">{e.category}</td>
-                          <td className="px-6 py-4 text-right font-mono font-semibold text-slate-900">
-                            ${e.amount.toLocaleString()} {e.currency}
+                          <td className="px-6 py-4 text-right font-mono tabular-nums font-semibold text-slate-900">
+                            {formatINR(e.amount)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full capitalize ${
@@ -858,9 +882,9 @@ export default function App() {
                           </td>
                           <td className="px-6 py-4 text-center">
                             <div className="flex items-center justify-center gap-2">
-                              {e.receiptUrl && (
+                              {e.receiptPath && (
                                 <a
-                                  href={e.receiptUrl}
+                                  href={e.receiptPath}
                                   target="_blank"
                                   rel="noreferrer"
                                   className="text-xs text-indigo-600 hover:underline font-medium"
@@ -929,6 +953,7 @@ export default function App() {
                           value={t.status}
                           onChange={(e) => handleUpdateTaskStatus(t.id, e.target.value as any)}
                           className="text-xs font-medium bg-slate-100 border border-slate-200 rounded px-2 py-1 text-slate-700"
+                          aria-label="Task Status"
                         >
                           <option value="open">Open</option>
                           <option value="in_progress">In Progress</option>
@@ -950,7 +975,7 @@ export default function App() {
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left text-sm" aria-label="Audit Logs Table">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 font-semibold uppercase tracking-wider">
                       <tr>
                         <th className="px-6 py-4">Timestamp</th>
@@ -963,8 +988,8 @@ export default function App() {
                     <tbody className="divide-y divide-slate-100">
                       {data.auditLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-slate-50/50">
-                          <td className="px-6 py-4 font-mono text-xs text-slate-500">
-                            {new Date(log.timestamp).toLocaleString()}
+                          <td className="px-6 py-4 font-mono text-xs text-slate-500 tabular-nums">
+                            {new Date(log.timestamp).toLocaleString("en-IN")}
                           </td>
                           <td className="px-6 py-4 font-semibold text-slate-800">{log.action}</td>
                           <td className="px-6 py-4 text-slate-600 capitalize">{log.entityType}</td>
@@ -984,7 +1009,7 @@ export default function App() {
       {/* New Event Modal */}
       {showNewEventModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl" role="dialog" aria-modal="true">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Create Event Workspace</h3>
             <form onSubmit={handleCreateEvent} className="space-y-4">
               <div>
@@ -995,7 +1020,7 @@ export default function App() {
                   value={newEventForm.name}
                   onChange={(e) => setNewEventForm({ ...newEventForm, name: e.target.value })}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="e.g. Annual Charity Gala 2026"
+                  placeholder="e.g. Rural Health Camp 2026"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1010,7 +1035,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Budget ($)</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Budget (₹ INR)</label>
                   <input
                     type="number"
                     required
@@ -1053,8 +1078,8 @@ export default function App() {
       {/* New Contribution Modal */}
       {showNewContributionModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Record Contribution</h3>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl" role="dialog" aria-modal="true">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Record Contribution (₹ INR)</h3>
             <form onSubmit={handleCreateContribution} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Contributor Name / Organization</label>
@@ -1064,7 +1089,7 @@ export default function App() {
                   value={newContribForm.contributorName}
                   onChange={(e) => setNewContribForm({ ...newContribForm, contributorName: e.target.value })}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="e.g. Acme Foundation"
+                  placeholder="e.g. Karnataka Philanthropy"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1096,7 +1121,7 @@ export default function App() {
               {newContribForm.contributionType === "monetary" ? (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Promised Amount ($)</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Promised Amount (₹)</label>
                     <input
                       type="number"
                       required
@@ -1106,7 +1131,7 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount Received ($)</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Amount Received (₹)</label>
                     <input
                       type="number"
                       required
@@ -1125,7 +1150,7 @@ export default function App() {
                     value={newContribForm.inKindDescription}
                     onChange={(e) => setNewContribForm({ ...newContribForm, inKindDescription: e.target.value })}
                     className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    placeholder="e.g. 50 Catering Chairs"
+                    placeholder="e.g. 50 Medical Kits"
                   />
                 </div>
               )}
@@ -1148,7 +1173,7 @@ export default function App() {
                   value={newContribForm.notes}
                   onChange={(e) => setNewContribForm({ ...newContribForm, notes: e.target.value })}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="Optional notes or wire transfer ref"
+                  placeholder="UPI ref or bank transfer details"
                 />
               </div>
 
@@ -1175,8 +1200,8 @@ export default function App() {
       {/* Manual Expense Modal */}
       {showNewExpenseModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Record Expense & Upload Receipt</h3>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl" role="dialog" aria-modal="true">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Record Expense & Receipt (₹ INR)</h3>
             <form onSubmit={handleCreateExpense} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Merchant / Vendor Name</label>
@@ -1186,12 +1211,12 @@ export default function App() {
                   value={newExpenseForm.merchant}
                   onChange={(e) => setNewExpenseForm({ ...newExpenseForm, merchant: e.target.value })}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="e.g. Office Depot"
+                  placeholder="e.g. Apex Pharma"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Amount ($)</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Amount (₹)</label>
                   <input
                     type="number"
                     required
@@ -1207,10 +1232,9 @@ export default function App() {
                     onChange={(e) => setNewExpenseForm({ ...newExpenseForm, category: e.target.value })}
                     className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
-                    <option value="Venue & Catering">Venue & Catering</option>
-                    <option value="Equipment">Equipment</option>
-                    <option value="Travel">Travel</option>
                     <option value="Supplies">Supplies</option>
+                    <option value="Venue & Catering">Venue & Catering</option>
+                    <option value="Travel">Travel</option>
                     <option value="Marketing">Marketing</option>
                   </select>
                 </div>
@@ -1228,7 +1252,7 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Description / Notes</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
                 <input
                   type="text"
                   value={newExpenseForm.description}
@@ -1271,13 +1295,13 @@ export default function App() {
       {/* AI Receipt OCR Modal */}
       {showOcrModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl" role="dialog" aria-modal="true">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-lg font-bold text-slate-900">AI Receipt OCR & Extraction</h3>
+              <h3 className="text-lg font-bold text-slate-900">AI Receipt OCR & Extraction (₹ INR)</h3>
             </div>
             <p className="text-xs text-slate-500 mb-4">
-              Upload a receipt image or PDF. Gemini will extract merchant, date, amount, and category for your verification before saving.
+              Upload a receipt image or PDF. Gemini will extract merchant, date, and amount in INR for your verification before saving.
             </p>
 
             {!ocrResult ? (
@@ -1314,7 +1338,7 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-2">
                     <div><span className="text-slate-400">Merchant:</span> <span className="font-medium text-slate-900">{ocrResult.extracted.merchant}</span></div>
                     <div><span className="text-slate-400">Date:</span> <span className="font-medium text-slate-900">{ocrResult.extracted.date}</span></div>
-                    <div><span className="text-slate-400">Amount:</span> <span className="font-medium font-mono text-slate-900">${ocrResult.extracted.amount} {ocrResult.extracted.currency}</span></div>
+                    <div><span className="text-slate-400">Amount:</span> <span className="font-medium font-mono tabular-nums text-slate-900">{formatINR(ocrResult.extracted.amount)}</span></div>
                     <div><span className="text-slate-400">Category:</span> <span className="font-medium text-slate-900">{ocrResult.extracted.category}</span></div>
                   </div>
                   <div className="pt-2"><span className="text-slate-400">Summary:</span> <span className="text-slate-700">{ocrResult.extracted.summary}</span></div>
@@ -1345,13 +1369,13 @@ export default function App() {
       {/* AI Task Generator Modal */}
       {showAiTaskModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="w-5 h-5 text-indigo-600" />
               <h3 className="text-lg font-bold text-slate-900">GenAI Follow-up Task Assistant</h3>
             </div>
             <p className="text-xs text-slate-500 mb-4">
-              Provide optional notes or meeting minutes. Gemini will analyze current commitments and receipts to propose reviewable action items.
+              Provide optional notes or meeting minutes. Gemini will analyze current INR commitments and receipts to propose reviewable action items.
             </p>
 
             <div className="space-y-4">
@@ -1362,7 +1386,7 @@ export default function App() {
                   value={aiNotes}
                   onChange={(e) => setAiNotes(e.target.value)}
                   className="w-full text-sm border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="e.g. Discussed follow-up with Apex Corp for remaining $5,000. Need receipt for AV rentals."
+                  placeholder="e.g. Discussed follow-up with Bangalore Tech for remaining ₹50,000 balance."
                 />
               </div>
 

@@ -1,33 +1,77 @@
-# Implementation Plan — SevaTrack AI (NGO Contribution & Expense Coordinator)
+# Implementation Plan — SevaTrack AI Remediation & Audit
 
-## Architecture Overview
-- **Backend (`server.ts`)**: Express server with Vite middleware in development. Uses a robust file-backed or SQLite/JSON persistence layer supporting organization tenant isolation, audit logging, file uploads (with MIME validation & random storage names), receipt OCR extraction via `@google/genai` (`gemini-3.8-flash`), and GenAI follow-up task generation with schema validation.
-- **Frontend (`src/`):** React 19 + TypeScript + Tailwind CSS v4 + Lucide Icons + Motion animations. Styled following the SaaS dashboard design constitution (clean neutrals, tabular numerals, accessible contrast, zero pill badges, 60-30-10 color harmony).
-- **Core Modules:**
-  1. **Event Workspace:** Manage events, budgets, statuses, and associate records.
-  2. **Contribution Management:** Track monetary vs in-kind contributions, partial payments, promised vs received amounts, audit trail, duplicate prevention.
-  3. **Expense & Receipt Management:** Manual expense entry, secure receipt uploads, OCR extraction of merchant/date/amount/currency with human verification step, review statuses (pending, verified, rejected), duplicate/missing receipt flagging.
-  4. **GenAI Follow-up Assistant:** Generate reviewable follow-up tasks from event notes and financial records using `@google/genai`, requiring manual user confirmation before creation.
-  5. **Financial Dashboard & Reports:** Deterministic metrics (promised vs received cash, outstanding commitments, verified vs pending expenses, budget utilization, separate non-kind totals).
+This plan outlines the remediation strategy for SevaTrack AI to address security, financial integrity (using Indian Rupees ₹ INR), architecture, efficiency, testing, and accessibility according to the 8-phase audit requirements.
 
-## Detailed Steps
-1. **Backend Infrastructure (`server.ts` & storage):**
-   - Setup data storage schemas for Organizations, Events, Contributions, Expenses, Receipts, Tasks, and Audit Logs.
-   - Implement authentication/tenant middleware (simulated org context with multi-org switcher).
-   - Implement receipt upload middleware (`multer` or custom multipart parser with MIME validation, size limits, randomized filenames).
-   - Implement Gemini OCR endpoint (`/api/receipts/ocr`) using `@google/genai` (`gemini-3.8-flash`).
-   - Implement GenAI Follow-up Task Generator endpoint (`/api/ai/tasks`) using `@google/genai` with structured JSON output schema.
-   - Implement CRUD endpoints for Events, Contributions, Expenses, Receipts, Tasks, and Audit Logs with server-side validation and audit trail recording.
+## User Review & Critical Decisions
 
-2. **Frontend Components (`src/`):**
-   - **Navigation & Layout:** Top bar contract (brand wordmark, clean nav links, primary action) + organization switcher.
-   - **Dashboard View:** Key metrics cards (promised vs received, cash outstanding, verified expenses, budget utilization) with tabular numerals and clean charts/breakdowns.
-   - **Event Workspace View:** Event switcher, event details, budget tracking.
-   - **Contributions View:** Contribution table, partial payment dialog, in-kind vs monetary breakdown, audit trail drawer.
-   - **Expenses & Receipts View:** Expense list, receipt upload dropzone, OCR review modal (comparing extracted vs verified fields), status badges (verified, pending, rejected).
-   - **GenAI Follow-up Assistant View:** Note input, AI task generation, review and approve/edit workflow before task creation.
-   - **Audit Logs & Reports View:** Complete immutable audit trail of financial changes.
+> [!IMPORTANT]
+> - **Currency**: All financial records, budgets, contributions, and expenses will be tracked and displayed in Indian Rupees (₹ INR).
+> - **Authentication & Authorization**: Server-side session token authentication with role-based organization membership, ensuring tenant isolation and secure receipt access.
+> - **Persistence**: File-based JSON storage with robust transactional audit logging and concurrency locking.
 
-3. **Verification & Testing:**
-   - Run type checking (`npm run lint`).
-   - Verify build (`npm run build`).
+---
+
+## 1. Overview & Core Concept
+
+- **What It Does**: Centralizes event workspaces, contribution tracking (promised vs. received, monetary vs. in-kind), expense management, receipt OCR extraction via Gemini, AI follow-up task generation, and financial dashboards for NGOs.
+- **Target Audience / Persona**: NGO administrators, financial officers, and event coordinators in India managing fundraising and project expenditures.
+- **Key Value**: Guaranteed financial integrity (INR), secure tenant isolation, human-verified receipt OCR, and actionable AI follow-up tasks.
+
+---
+
+## 2. User Experience & Visual Design
+
+- **Key User Flows**: 
+  1. Secure authentication and organization selection.
+  2. Event creation and workspace management.
+  3. Recording contributions (monetary pledges, partial payments, in-kind donations) in ₹ INR.
+  4. Manual expense entry and AI receipt OCR upload with side-by-side verification.
+  5. Generating and approving AI follow-up tasks.
+  6. Viewing verified financial totals and immutable audit trail.
+- **Visual Identity & Theme**:
+  - *Aesthetic Direction*: Clean professional SaaS dashboard (neutral slate `#0F172A`, cool gray `#1E293B`, crisp white surface, indigo primary accent `#4F46E5`).
+  - *Typography*: Clean sans-serif UI font paired with monospace tabular numerals (`font-mono tabular-nums`) for all monetary values and tables.
+  - *Accessibility*: WCAG 2.2 AA contrast, keyboard navigation, visible focus rings, and semantic labels.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Currency Standardization (INR ₹)**
+  - *Chosen Approach*: Enforce ₹ INR across all monetary inputs, calculations, and displays.
+  - *Why*: Direct alignment with Indian NGO operational needs.
+- **Decision 2: Server-Side Authorization & Token Auth**
+  - *Chosen Approach*: Replace insecure client-supplied headers (`x-org-id`) with server-side session token validation and robust organization tenancy checks.
+  - *Why*: Eliminates Insecure Direct Object Reference (IDOR) and cross-tenant data leaks.
+- **Decision 3: Human-in-the-Loop Receipt Verification**
+  - *Chosen Approach*: AI OCR (`gemini-3.8-flash`) extracts candidate receipt data into an editable review modal before committing to the database.
+  - *Why*: Ensures 100% financial accuracy and prevents unverified OCR hallucinations.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌────────────────────────────────────────────────────────┐
+│                      Client Browser                    │
+│   (React 19 SPA, Tailwind CSS, Accessible UI, INR)     │
+└──────────────────────────┬─────────────────────────────┘
+                           │ HTTPS / JSON / Multipart
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│               Express Server (`server.ts`)             │
+│   - Session Auth & Tenant Middleware                   │
+│   - File Upload & MIME / Signature Validation          │
+│   - Gemini AI Service (`gemini-3.8-flash` OCR & Tasks) │
+└──────────────────────────┬─────────────────────────────┘
+                           │ Secure CRUD & Transactions
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│               Persistent Storage & Audit Log           │
+│   - Encapsulated JSON Store (`data.json`)              │
+│   - Immutable Audit Trail & Role-based Access Control  │
+└────────────────────────────────────────────────────────┘
+```
+
+- **Data Models**: Organizations, Users/Sessions, Events, Contributions (Monetary / In-Kind), Expenses (Receipts, OCR, Status), Tasks (Manual / AI Generated), Audit Logs.
+- **Security Controls**: File upload size limits (10MB), MIME signature checks, secure random filenames, rate limiting on AI endpoints, safe error handling without internal stack traces.

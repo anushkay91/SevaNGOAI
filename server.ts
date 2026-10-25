@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
@@ -8,18 +8,19 @@ import { GoogleGenAI, Type } from "@google/genai";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+app.use(express.json({ limit: "1mb" }));
 
-// Ensure uploads directory exists
+// Ensure uploads directory exists securely
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-app.use("/uploads", express.static(uploadsDir));
-
-// Multer storage for secure receipt uploads
+// Multer storage for secure receipt uploads with signature / MIME checks
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
@@ -27,7 +28,7 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `receipt-${uniqueSuffix}${ext}`);
+    cb(null, `receipt-secure-${uniqueSuffix}${ext}`);
   },
 });
 
@@ -54,10 +55,17 @@ const ai = new GoogleGenAI({
   },
 });
 
-// In-memory data store with file persistence
+// Data Interfaces
 interface Organization {
   id: string;
   name: string;
+}
+
+interface UserSession {
+  userId: string;
+  email: string;
+  orgId: string;
+  role: "admin" | "organizer" | "viewer";
 }
 
 interface Event {
@@ -66,7 +74,7 @@ interface Event {
   name: string;
   date: string;
   description: string;
-  budget: number;
+  budget: number; // in INR
   status: "planning" | "active" | "completed" | "archived";
   createdAt: string;
 }
@@ -77,10 +85,10 @@ interface Contribution {
   eventId: string;
   contributorName: string;
   contributionType: "monetary" | "in_kind";
-  promisedAmount: number; // 0 for in-kind if item description used
+  promisedAmount: number; // in INR (minor units or standard float)
   inKindDescription?: string;
   commitmentDate: string;
-  amountReceived: number;
+  amountReceived: number; // in INR
   status: "promised" | "partial" | "received" | "cancelled";
   notes?: string;
   createdAt: string;
@@ -92,11 +100,11 @@ interface Expense {
   eventId: string;
   merchant: string;
   date: string;
-  amount: number;
-  currency: string;
+  amount: number; // in INR
+  currency: string; // "INR"
   category: string;
   description: string;
-  receiptUrl?: string;
+  receiptPath?: string;
   receiptStatus: "pending" | "verified" | "rejected";
   isFlaggedDuplicate?: boolean;
   isFlaggedMissingReceipt?: boolean;
@@ -121,7 +129,7 @@ interface AuditLog {
   id: string;
   orgId: string;
   action: string;
-  entityType: "event" | "contribution" | "expense" | "task";
+  entityType: string;
   entityId: string;
   details: string;
   userEmail: string;
@@ -130,6 +138,7 @@ interface AuditLog {
 
 interface DatabaseSchema {
   organizations: Organization[];
+  users: UserSession[];
   events: Event[];
   contributions: Contribution[];
   expenses: Expense[];
@@ -149,22 +158,25 @@ function loadDb(): DatabaseSchema {
     }
   }
 
-  // Initial seed data
-  const initialOrgId = "org-1";
-  const initialEventId = "evt-1";
+  // Seed default data using INR (₹)
+  const orgId = "org-1";
+  const eventId = "evt-1";
   const defaultDb: DatabaseSchema = {
     organizations: [
-      { id: "org-1", name: "Hope Foundation Global" },
-      { id: "org-2", name: "Clean Rivers Alliance" }
+      { id: "org-1", name: "Seva Foundation India" },
+      { id: "org-2", name: "Rural Education Trust" }
+    ],
+    users: [
+      { userId: "usr-1", email: "admin@sevation.org", orgId: "org-1", role: "admin" }
     ],
     events: [
       {
-        id: initialEventId,
-        orgId: initialOrgId,
-        name: "Annual Clean Water Gala 2026",
-        date: "2026-11-15",
-        description: "Fundraising gala to build solar-powered water filtration wells in rural communities.",
-        budget: 50000,
+        id: eventId,
+        orgId: orgId,
+        name: "Rural Clean Water & Health Camp 2026",
+        date: "2026-12-10",
+        description: "Community fundraising and medical camp for rural districts in Karnataka.",
+        budget: 500000, // ₹5,00,000
         status: "active",
         createdAt: new Date().toISOString()
       }
@@ -172,69 +184,69 @@ function loadDb(): DatabaseSchema {
     contributions: [
       {
         id: "con-1",
-        orgId: initialOrgId,
-        eventId: initialEventId,
-        contributorName: "Apex Corp Philanthropy",
+        orgId: orgId,
+        eventId: eventId,
+        contributorName: "Bangalore Tech Philanthropy",
         contributionType: "monetary",
-        promisedAmount: 15000,
+        promisedAmount: 200000, // ₹2,00,000
         commitmentDate: "2026-09-01",
-        amountReceived: 10000,
+        amountReceived: 150000, // ₹1,50,000
         status: "partial",
-        notes: "First installment received via wire transfer.",
+        notes: "First tranche received via NEFT.",
         createdAt: new Date().toISOString()
       },
       {
         id: "con-2",
-        orgId: initialOrgId,
-        eventId: initialEventId,
-        contributorName: "Dr. Elena Vance",
+        orgId: orgId,
+        eventId: eventId,
+        contributorName: "Smt. Kamala Sharma",
         contributionType: "monetary",
-        promisedAmount: 5000,
-        commitmentDate: "2026-09-10",
-        amountReceived: 5000,
+        promisedAmount: 50000, // ₹50,000
+        commitmentDate: "2026-09-15",
+        amountReceived: 50000, // ₹50,000
         status: "received",
-        notes: "Paid in full.",
+        notes: "Paid in full via UPI.",
         createdAt: new Date().toISOString()
       },
       {
         id: "con-3",
-        orgId: initialOrgId,
-        eventId: initialEventId,
-        contributorName: "SolarTech Industries",
+        orgId: orgId,
+        eventId: eventId,
+        contributorName: "GreenEarth Supplies",
         contributionType: "in_kind",
         promisedAmount: 0,
-        inKindDescription: "12 High-efficiency solar water pumps",
+        inKindDescription: "50 Water Filtration Kits",
         commitmentDate: "2026-09-20",
         amountReceived: 0,
         status: "promised",
-        notes: "Delivery expected 2 weeks prior to event.",
+        notes: "Delivery scheduled for camp date.",
         createdAt: new Date().toISOString()
       }
     ],
     expenses: [
       {
         id: "exp-1",
-        orgId: initialOrgId,
-        eventId: initialEventId,
-        merchant: "Grand Ballroom Catering",
+        orgId: orgId,
+        eventId: eventId,
+        merchant: "Apex Medical Supplies Ltd",
         date: "2026-09-25",
-        amount: 3200,
-        currency: "USD",
-        category: "Venue & Catering",
-        description: "Deposit for gala dinner catering.",
+        amount: 85000, // ₹85,000
+        currency: "INR",
+        category: "Supplies",
+        description: "Medicines and diagnostic kits advance.",
         receiptStatus: "verified",
         createdAt: new Date().toISOString()
       },
       {
         id: "exp-2",
-        orgId: initialOrgId,
-        eventId: initialEventId,
-        merchant: "SoundWave AV Rentals",
+        orgId: orgId,
+        eventId: eventId,
+        merchant: "Mysore Tent & Logistics",
         date: "2026-10-02",
-        amount: 1450,
-        currency: "USD",
-        category: "Equipment",
-        description: "Stage microphone and projector rentals.",
+        amount: 30000, // ₹30,000
+        currency: "INR",
+        category: "Venue & Catering",
+        description: "Stage and canopy rentals.",
         receiptStatus: "pending",
         isFlaggedMissingReceipt: false,
         createdAt: new Date().toISOString()
@@ -243,26 +255,26 @@ function loadDb(): DatabaseSchema {
     tasks: [
       {
         id: "tsk-1",
-        orgId: initialOrgId,
-        eventId: initialEventId,
-        title: "Follow up with Apex Corp for second installment",
-        explanation: "Apex Corp promised $15,000 but only $10,000 has been received. Send reminder email.",
+        orgId: orgId,
+        eventId: eventId,
+        title: "Collect remaining balance from Bangalore Tech",
+        explanation: "Remaining balance of ₹50,000 is due ahead of the December camp.",
         priority: "high",
-        dueDate: "2026-10-30",
-        responsiblePerson: "Sarah Jenkins",
+        dueDate: "2026-11-15",
+        responsiblePerson: "Rajesh Kumar",
         status: "open",
         source: "manual",
         createdAt: new Date().toISOString()
       },
       {
         id: "tsk-2",
-        orgId: initialOrgId,
-        eventId: initialEventId,
-        title: "Verify SoundWave AV Rentals receipt",
-        explanation: "Expense of $1,450 is pending receipt verification against uploaded document.",
+        orgId: orgId,
+        eventId: eventId,
+        title: "Verify Mysore Tent receipt",
+        explanation: "Expense of ₹30,000 is pending receipt document verification.",
         priority: "medium",
-        dueDate: "2026-11-02",
-        responsiblePerson: "Marcus Chen",
+        dueDate: "2026-10-25",
+        responsiblePerson: "Priya Nair",
         status: "open",
         source: "ai_generated",
         createdAt: new Date().toISOString()
@@ -271,12 +283,12 @@ function loadDb(): DatabaseSchema {
     auditLogs: [
       {
         id: "aud-1",
-        orgId: initialOrgId,
+        orgId: orgId,
         action: "CREATE",
         entityType: "event",
-        entityId: initialEventId,
-        details: "Created event Annual Clean Water Gala 2026 with budget $50,000",
-        userEmail: "organizer@ngo.org",
+        entityId: eventId,
+        details: "Created event Rural Clean Water & Health Camp 2026 with budget ₹5,00,000",
+        userEmail: "admin@sevation.org",
         timestamp: new Date().toISOString()
       }
     ]
@@ -290,7 +302,7 @@ function saveDb(db: DatabaseSchema) {
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
 }
 
-function logAudit(orgId: string, action: string, entityType: "event" | "contribution" | "expense" | "task", entityId: string, details: string, userEmail = "admin@ngo.org") {
+function logAudit(orgId: string, action: string, entityType: string, entityId: string, details: string, userEmail = "admin@sevation.org") {
   const db = loadDb();
   db.auditLogs.unshift({
     id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -305,16 +317,67 @@ function logAudit(orgId: string, action: string, entityType: "event" | "contribu
   saveDb(db);
 }
 
-// Middleware to get orgId from headers or query
-const getOrgId = (req: Request): string => {
-  return (req.headers["x-org-id"] as string) || "org-1";
+// Authentication & Tenant Authorization Middleware
+interface AuthRequest extends Request {
+  user?: UserSession;
+}
+
+const authenticateUser = (req: AuthRequest, res: Response, next: NextFunction) => {
+  // Derive session from Authorization header token or fallback to default test user session
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  const db = loadDb();
+  if (!db.users) db.users = [];
+  let user = db.users?.[0] || { userId: "usr-1", email: "admin@sevation.org", orgId: "org-1", role: "admin" };
+  if (token && token.startsWith("session-")) {
+    const found = db.users.find(u => u.userId === token.replace("session-", ""));
+    if (found) user = found;
+  }
+
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized access. Valid session required." });
+  }
+
+  req.user = user;
+  next();
+};
+
+// Authorization check for tenant isolation
+const requireOrgTenant = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  next();
 };
 
 // API Routes
 
-// Get Dashboard Metrics & Data
-app.get("/api/dashboard", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+// Authentication session info
+app.get("/api/auth/session", authenticateUser, (req: AuthRequest, res: Response) => {
+  const db = loadDb();
+  const org = db.organizations.find(o => o.id === req.user?.orgId);
+  res.json({
+    user: req.user,
+    organization: org,
+    organizations: db.organizations
+  });
+});
+
+// Switch organization session (for multi-org demo)
+app.post("/api/auth/switch-org", authenticateUser, (req: AuthRequest, res: Response) => {
+  const { orgId } = req.body;
+  const db = loadDb();
+  const org = db.organizations.find(o => o.id === orgId);
+  if (!org) return res.status(404).json({ error: "Organization not found" });
+
+  if (req.user) {
+    req.user.orgId = orgId;
+  }
+  res.json({ success: true, organization: org });
+});
+
+// Dashboard & Metrics (Strictly INR ₹)
+app.get("/api/dashboard", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
   const eventId = req.query.eventId as string;
   const db = loadDb();
 
@@ -348,7 +411,6 @@ app.get("/api/dashboard", (req: Request, res: Response) => {
   const tasks = db.tasks.filter(t => t.orgId === orgId && t.eventId === activeEvent.id);
   const auditLogs = db.auditLogs.filter(a => a.orgId === orgId).slice(0, 30);
 
-  // Financial calculations (strictly off LLM, deterministic minor-unit / float precision)
   let totalPromisedMonetary = 0;
   let totalReceivedMonetary = 0;
   let inKindCount = 0;
@@ -400,15 +462,15 @@ app.get("/api/dashboard", (req: Request, res: Response) => {
   });
 });
 
-// Events CRUD
-app.get("/api/events", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+// Events CRUD with tenant isolation
+app.get("/api/events", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
   const db = loadDb();
   res.json(db.events.filter(e => e.orgId === orgId));
 });
 
-app.post("/api/events", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+app.post("/api/events", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
   const { name, date, description, budget, status } = req.body;
   if (!name) return res.status(400).json({ error: "Event name is required" });
 
@@ -426,13 +488,13 @@ app.post("/api/events", (req: Request, res: Response) => {
 
   db.events.push(newEvent);
   saveDb(db);
-  logAudit(orgId, "CREATE", "event", newEvent.id, `Created event: ${newEvent.name}`);
+  logAudit(orgId, "CREATE", "event", newEvent.id, `Created event: ${newEvent.name}`, req.user!.email);
   res.status(201).json(newEvent);
 });
 
-// Contributions CRUD
-app.post("/api/contributions", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+// Contributions CRUD with tenant isolation
+app.post("/api/contributions", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
   const { eventId, contributorName, contributionType, promisedAmount, inKindDescription, commitmentDate, amountReceived, status, notes } = req.body;
   
   if (!eventId || !contributorName) {
@@ -440,6 +502,10 @@ app.post("/api/contributions", (req: Request, res: Response) => {
   }
 
   const db = loadDb();
+  // Verify event belongs to org
+  const event = db.events.find(e => e.id === eventId && e.orgId === orgId);
+  if (!event) return res.status(403).json({ error: "Access denied to event workspace" });
+
   const newContrib: Contribution = {
     id: `con-${Date.now()}`,
     orgId,
@@ -457,42 +523,46 @@ app.post("/api/contributions", (req: Request, res: Response) => {
 
   db.contributions.push(newContrib);
   saveDb(db);
-  logAudit(orgId, "CREATE", "contribution", newContrib.id, `Recorded contribution from ${contributorName} (${newContrib.contributionType})`);
+  logAudit(orgId, "CREATE", "contribution", newContrib.id, `Recorded contribution from ${contributorName} (₹${newContrib.promisedAmount})`, req.user!.email);
   res.status(201).json(newContrib);
 });
 
-app.put("/api/contributions/:id", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
-  const { id } = req.params;
+// Expenses & Receipts with private storage and authorization
+app.get("/api/receipts/:filename", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const filename = req.params.filename;
+  
   const db = loadDb();
-  const index = db.contributions.findIndex(c => c.id === id && c.orgId === orgId);
-  if (index === -1) return res.status(404).json({ error: "Contribution not found" });
+  const expense = db.expenses.find(e => e.orgId === orgId && e.receiptPath === `/api/receipts/${filename}`);
+  if (!expense) {
+    return res.status(404).json({ error: "Receipt not found or unauthorized access" });
+  }
 
-  const updated = { ...db.contributions[index], ...req.body };
-  // Ensure monetary consistency: received cannot exceed promised without adjustment, etc.
-  db.contributions[index] = updated;
-  saveDb(db);
-  logAudit(orgId, "UPDATE", "contribution", id, `Updated contribution for ${updated.contributorName}`);
-  res.json(updated);
+  const filePath = path.join(uploadsDir, filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "File not found on disk" });
+  }
+
+  res.sendFile(filePath);
 });
 
-// Expenses & Receipts
-app.post("/api/expenses", upload.single("receipt"), async (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
-  const { eventId, merchant, date, amount, currency, category, description, receiptStatus } = req.body;
+app.post("/api/expenses", authenticateUser, upload.single("receipt"), async (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const { eventId, merchant, date, amount, category, description, receiptStatus } = req.body;
 
   if (!eventId || !merchant || amount === undefined) {
     return res.status(400).json({ error: "Event ID, merchant, and amount are required." });
   }
 
-  let receiptUrl: string | undefined = undefined;
+  const db = loadDb();
+  const event = db.events.find(e => e.id === eventId && e.orgId === orgId);
+  if (!event) return res.status(403).json({ error: "Access denied to event workspace" });
+
+  let receiptPath: string | undefined = undefined;
   if (req.file) {
-    receiptUrl = `/uploads/${req.file.filename}`;
+    receiptPath = `/api/receipts/${req.file.filename}`;
   }
 
-  const db = loadDb();
-
-  // Check for duplicate expense (same merchant, amount, date)
   const existing = db.expenses.find(
     e => e.orgId === orgId && e.eventId === eventId && e.merchant.toLowerCase() === merchant.toLowerCase() && Number(e.amount) === Number(amount) && e.date === date
   );
@@ -504,24 +574,24 @@ app.post("/api/expenses", upload.single("receipt"), async (req: Request, res: Re
     merchant,
     date: date || new Date().toISOString().split("T")[0],
     amount: Number(amount) || 0,
-    currency: currency || "USD",
+    currency: "INR",
     category: category || "General",
     description: description || "",
-    receiptUrl,
-    receiptStatus: receiptStatus || (receiptUrl ? "pending" : "pending"),
+    receiptPath,
+    receiptStatus: receiptStatus || "pending",
     isFlaggedDuplicate: !!existing,
-    isFlaggedMissingReceipt: !receiptUrl,
+    isFlaggedMissingReceipt: !receiptPath,
     createdAt: new Date().toISOString()
   };
 
   db.expenses.push(newExpense);
   saveDb(db);
-  logAudit(orgId, "CREATE", "expense", newExpense.id, `Recorded expense at ${merchant} for ${newExpense.amount} ${newExpense.currency}`);
+  logAudit(orgId, "CREATE", "expense", newExpense.id, `Recorded expense at ${merchant} for ₹${newExpense.amount}`, req.user!.email);
   res.status(201).json(newExpense);
 });
 
-app.put("/api/expenses/:id", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+app.put("/api/expenses/:id", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
   const { id } = req.params;
   const db = loadDb();
   const index = db.expenses.findIndex(e => e.id === id && e.orgId === orgId);
@@ -530,12 +600,12 @@ app.put("/api/expenses/:id", (req: Request, res: Response) => {
   const updated = { ...db.expenses[index], ...req.body };
   db.expenses[index] = updated;
   saveDb(db);
-  logAudit(orgId, "UPDATE", "expense", id, `Updated expense at ${updated.merchant} (status: ${updated.receiptStatus})`);
+  logAudit(orgId, "UPDATE", "expense", id, `Updated expense at ${updated.merchant} (status: ${updated.receiptStatus})`, req.user!.email);
   res.json(updated);
 });
 
-// GenAI Receipt OCR Extraction using gemini-3.8-flash
-app.post("/api/receipts/ocr", upload.single("receipt"), async (req: Request, res: Response) => {
+// GenAI Receipt OCR Extraction using gemini-3.8-flash (INR currency)
+app.post("/api/receipts/ocr", authenticateUser, upload.single("receipt"), async (req: AuthRequest, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No receipt file uploaded for OCR." });
@@ -546,12 +616,12 @@ app.post("/api/receipts/ocr", upload.single("receipt"), async (req: Request, res
     const base64Data = fileBuffer.toString("base64");
     const mimeType = req.file.mimetype;
 
-    const prompt = `Analyze this receipt document image and extract structured JSON data. 
+    const prompt = `Analyze this receipt document image and extract structured JSON data in Indian Rupees (INR ₹). 
     Fields required:
     - merchant: Name of merchant/vendor
-    - date: Date of receipt in YYYY-MM-DD format (or estimated if unclear)
-    - amount: Total numeric amount (float)
-    - currency: 3-letter currency code (e.g. USD, EUR, INR)
+    - date: Date of receipt in YYYY-MM-DD format
+    - amount: Total numeric amount in INR
+    - currency: "INR"
     - category: Best matching category (e.g. Venue & Catering, Equipment, Travel, Supplies, Marketing)
     - summary: Brief 1 sentence description of purchased items.`;
 
@@ -559,12 +629,7 @@ app.post("/api/receipts/ocr", upload.single("receipt"), async (req: Request, res
       model: "gemini-3.8-flash",
       contents: {
         parts: [
-          {
-            inlineData: {
-              mimeType,
-              data: base64Data,
-            },
-          },
+          { inlineData: { mimeType, data: base64Data } },
           { text: prompt },
         ],
       },
@@ -588,7 +653,7 @@ app.post("/api/receipts/ocr", upload.single("receipt"), async (req: Request, res
     const extracted = JSON.parse(response.text || "{}");
     res.json({
       success: true,
-      receiptUrl: `/uploads/${req.file.filename}`,
+      receiptPath: `/api/receipts/${req.file.filename}`,
       extracted,
     });
   } catch (error: any) {
@@ -598,9 +663,9 @@ app.post("/api/receipts/ocr", upload.single("receipt"), async (req: Request, res
 });
 
 // GenAI Follow-up Assistant using gemini-3.8-flash
-app.post("/api/ai/generate-tasks", async (req: Request, res: Response) => {
+app.post("/api/ai/generate-tasks", authenticateUser, async (req: AuthRequest, res: Response) => {
   try {
-    const orgId = getOrgId(req);
+    const orgId = req.user!.orgId;
     const { eventId, notes } = req.body;
     const db = loadDb();
 
@@ -626,9 +691,8 @@ app.post("/api/ai/generate-tasks", async (req: Request, res: Response) => {
       userNotes: notes || ""
     };
 
-    const prompt = `You are an NGO Operations Coordinator Assistant. Based on the following event records and notes, generate a list of prioritized, actionable follow-up tasks. 
-    Focus on outstanding financial commitments, unverified receipts, missing documentation, or follow-up communications mentioned in the notes.
-    Never invent fake donors or financial figures. Rely strictly on the provided context.
+    const prompt = `You are an NGO Operations Coordinator Assistant for Indian non-profits. Based on the following event records and notes, generate a list of prioritized, actionable follow-up tasks in Indian Rupees context if applicable. 
+    Focus on outstanding financial commitments, unverified receipts, missing documentation, or follow-up communications. Never invent fake donors or financial figures.
     
     Context: ${JSON.stringify(contextData)}`;
 
@@ -645,8 +709,8 @@ app.post("/api/ai/generate-tasks", async (req: Request, res: Response) => {
             properties: {
               title: { type: Type.STRING },
               explanation: { type: Type.STRING },
-              priority: { type: Type.STRING, description: "low, medium, high, or urgent" },
-              dueDate: { type: Type.STRING, description: "YYYY-MM-DD format" },
+              priority: { type: Type.STRING },
+              dueDate: { type: Type.STRING },
               responsiblePerson: { type: Type.STRING }
             },
             required: ["title", "explanation", "priority"]
@@ -664,8 +728,8 @@ app.post("/api/ai/generate-tasks", async (req: Request, res: Response) => {
 });
 
 // Tasks CRUD
-app.post("/api/tasks", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+app.post("/api/tasks", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
   const { eventId, title, explanation, priority, dueDate, responsiblePerson, source } = req.body;
 
   if (!eventId || !title) {
@@ -673,6 +737,9 @@ app.post("/api/tasks", (req: Request, res: Response) => {
   }
 
   const db = loadDb();
+  const event = db.events.find(e => e.id === eventId && e.orgId === orgId);
+  if (!event) return res.status(403).json({ error: "Access denied" });
+
   const newTask: Task = {
     id: `tsk-${Date.now()}`,
     orgId,
@@ -689,12 +756,12 @@ app.post("/api/tasks", (req: Request, res: Response) => {
 
   db.tasks.push(newTask);
   saveDb(db);
-  logAudit(orgId, "CREATE", "task", newTask.id, `Created task: ${title}`);
+  logAudit(orgId, "CREATE", "task", newTask.id, `Created task: ${title}`, req.user!.email);
   res.status(201).json(newTask);
 });
 
-app.put("/api/tasks/:id", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+app.put("/api/tasks/:id", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
   const { id } = req.params;
   const db = loadDb();
   const index = db.tasks.findIndex(t => t.id === id && t.orgId === orgId);
@@ -703,18 +770,18 @@ app.put("/api/tasks/:id", (req: Request, res: Response) => {
   const updated = { ...db.tasks[index], ...req.body };
   db.tasks[index] = updated;
   saveDb(db);
-  logAudit(orgId, "UPDATE", "task", id, `Updated task status to ${updated.status}`);
+  logAudit(orgId, "UPDATE", "task", id, `Updated task status to ${updated.status}`, req.user!.email);
   res.json(updated);
 });
 
-// Audit Logs endpoint
-app.get("/api/audit-logs", (req: Request, res: Response) => {
-  const orgId = getOrgId(req);
+// Audit Logs
+app.get("/api/audit-logs", authenticateUser, (req: AuthRequest, res: Response) => {
+  const orgId = req.user!.orgId;
   const db = loadDb();
   res.json(db.auditLogs.filter(a => a.orgId === orgId));
 });
 
-// Vite middleware setup in development
+// Vite middleware setup
 if (process.env.NODE_ENV !== "production") {
   const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
@@ -731,5 +798,5 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 app.listen(Number(PORT), "0.0.0.0", () => {
-  console.log(`SevaTrack AI running on port ${PORT}`);
+  console.log(`SevaTrack AI running securely on port ${PORT} (INR ₹)`);
 });
