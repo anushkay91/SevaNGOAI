@@ -1,0 +1,6 @@
+{
+  "name": "SevaTrack AI",
+  "description": "NGO Contribution & Expense Coordinator with GenAI receipt OCR and follow-up assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
