@@ -18,7 +18,9 @@ import {
   AlertTriangle,
   ShieldCheck,
   TrendingUp,
-  Lock
+  Lock,
+  LogOut,
+  UserCheck
 } from "lucide-react";
 
 interface DashboardData {
@@ -93,7 +95,6 @@ interface DashboardData {
   }>;
 }
 
-// Helper to format currency in Indian Rupees (INR ₹)
 const formatINR = (amount: number) => {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -103,11 +104,21 @@ const formatINR = (amount: number) => {
 };
 
 export default function App() {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("sevatrack_token"));
   const [session, setSession] = useState<{ user: any; organization: any; organizations: any[] } | null>(null);
+  
+  // Auth Form State
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authOrgName, setAuthOrgName] = useState("");
+  const [authAccessCode, setAuthAccessCode] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"dashboard" | "contributions" | "expenses" | "tasks" | "audit">("dashboard");
   const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Modals
@@ -150,23 +161,100 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [proposedTasks, setProposedTasks] = useState<any[]>([]);
 
-  // Fetch Session & Auth
-  const fetchSession = async () => {
+  const apiFetch = async (url: string, options: RequestInit = {}) => {
+    const headers = new Headers(options.headers || {});
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      handleSignOut();
+      throw new Error("Session expired or unauthorized. Please sign in.");
+    }
+    return res;
+  };
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
     try {
-      const res = await fetch("/api/auth/session");
+      const endpoint = authMode === "signup" ? "/api/auth/signup" : "/api/auth/signin";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: authEmail,
+          name: authName,
+          orgName: authOrgName,
+          accessCode: authAccessCode
+        })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Authentication failed");
+
+      localStorage.setItem("sevatrack_token", json.token);
+      setToken(json.token);
+      setSession({
+        user: json.user,
+        organization: json.organization,
+        organizations: json.organizations
+      });
+    } catch (err: any) {
+      setAuthError(err.message);
+    }
+  };
+
+  const handleDemoLogin = async (email: string) => {
+    setAuthError(null);
+    try {
+      const res = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, accessCode: "demo" })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Demo login failed");
+
+      localStorage.setItem("sevatrack_token", json.token);
+      setToken(json.token);
+      setSession({
+        user: json.user,
+        organization: json.organization,
+        organizations: json.organizations
+      });
+    } catch (err: any) {
+      setAuthError(err.message);
+    }
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem("sevatrack_token");
+    setToken(null);
+    setSession(null);
+    setData(null);
+  };
+
+  const fetchSession = async () => {
+    if (!token) return;
+    try {
+      const res = await apiFetch("/api/auth/session");
       if (!res.ok) throw new Error("Failed to load session");
       const json = await res.json();
       setSession(json);
     } catch (err: any) {
-      setError(err.message);
+      handleSignOut();
     }
   };
 
   const fetchData = async () => {
+    if (!token) return;
     try {
       setLoading(true);
       const url = selectedEventId ? `/api/dashboard?eventId=${selectedEventId}` : `/api/dashboard`;
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (!res.ok) throw new Error("Failed to fetch dashboard data");
       const json = await res.json();
       setData(json);
@@ -182,20 +270,21 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchSession();
-  }, []);
+    if (token) {
+      fetchSession();
+    }
+  }, [token]);
 
   useEffect(() => {
-    if (session) {
+    if (token && session) {
       fetchData();
     }
-  }, [session, selectedEventId]);
+  }, [token, session, selectedEventId]);
 
   const handleSwitchOrg = async (orgId: string) => {
     try {
-      await fetch("/api/auth/switch-org", {
+      await apiFetch("/api/auth/switch-org", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId })
       });
       setSelectedEventId("");
@@ -209,9 +298,8 @@ export default function App() {
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/events", {
+      const res = await apiFetch("/api/events", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newEventForm)
       });
       if (!res.ok) throw new Error("Failed to create event");
@@ -229,9 +317,8 @@ export default function App() {
     e.preventDefault();
     if (!data?.activeEvent) return;
     try {
-      const res = await fetch("/api/contributions", {
+      const res = await apiFetch("/api/contributions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...newContribForm, eventId: data.activeEvent.id })
       });
       if (!res.ok) throw new Error("Failed to record contribution");
@@ -268,7 +355,7 @@ export default function App() {
         formData.append("receipt", expenseFile);
       }
 
-      const res = await fetch("/api/expenses", {
+      const res = await apiFetch("/api/expenses", {
         method: "POST",
         body: formData
       });
@@ -297,7 +384,7 @@ export default function App() {
       const formData = new FormData();
       formData.append("receipt", ocrFile);
 
-      const res = await fetch("/api/receipts/ocr", {
+      const res = await apiFetch("/api/receipts/ocr", {
         method: "POST",
         body: formData
       });
@@ -315,9 +402,8 @@ export default function App() {
     if (!ocrResult || !data?.activeEvent) return;
     try {
       const { merchant, date, amount, category, summary } = ocrResult.extracted;
-      const res = await fetch("/api/expenses", {
+      const res = await apiFetch("/api/expenses", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: data.activeEvent.id,
           merchant,
@@ -342,9 +428,8 @@ export default function App() {
     if (!data?.activeEvent) return;
     try {
       setAiLoading(true);
-      const res = await fetch("/api/ai/generate-tasks", {
+      const res = await apiFetch("/api/ai/generate-tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventId: data.activeEvent.id, notes: aiNotes })
       });
       if (!res.ok) throw new Error("Failed to generate tasks");
@@ -360,9 +445,8 @@ export default function App() {
   const handleApproveTask = async (task: any) => {
     if (!data?.activeEvent) return;
     try {
-      const res = await fetch("/api/tasks", {
+      const res = await apiFetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: data.activeEvent.id,
           title: task.title,
@@ -383,9 +467,8 @@ export default function App() {
 
   const handleUpdateExpenseStatus = async (expenseId: string, receiptStatus: "verified" | "rejected" | "pending") => {
     try {
-      const res = await fetch(`/api/expenses/${expenseId}`, {
+      const res = await apiFetch(`/api/expenses/${expenseId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ receiptStatus })
       });
       if (!res.ok) throw new Error("Failed to update expense status");
@@ -397,9 +480,8 @@ export default function App() {
 
   const handleUpdateTaskStatus = async (taskId: string, status: "open" | "in_progress" | "completed") => {
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await apiFetch(`/api/tasks/${taskId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status })
       });
       if (!res.ok) throw new Error("Failed to update task");
@@ -408,6 +490,138 @@ export default function App() {
       alert(err.message);
     }
   };
+
+  // If not authenticated, render Clean Sign In & Demo Quick Access Screen
+  if (!token || !session) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-800">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30">
+              <HeartHandshake className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">SevaTrack AI</h1>
+              <p className="text-xs text-slate-500 font-medium">NGO Contribution & Expense Coordinator</p>
+            </div>
+          </div>
+
+          {authError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2" role="alert">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
+            <button
+              type="button"
+              onClick={() => { setAuthMode("signin"); setAuthError(null); }}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${authMode === "signin" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthMode("signup"); setAuthError(null); }}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${authMode === "signup" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Register Community
+            </button>
+          </div>
+
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
+            {authMode === "signup" && (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Organizer Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={authName}
+                    onChange={(e) => setAuthName(e.target.value)}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    placeholder="e.g. Rajesh Kumar"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Community / NGO Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={authOrgName}
+                    onChange={(e) => setAuthOrgName(e.target.value)}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    placeholder="e.g. Youth Welfare Society"
+                  />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Official Organizer Email</label>
+              <input
+                type="email"
+                required
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                className="w-full text-sm border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                placeholder="e.g. admin@sevation.org"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Community Trust & Verification Code</label>
+              <div className="relative">
+                <input
+                  type="password"
+                  required
+                  value={authAccessCode}
+                  onChange={(e) => setAuthAccessCode(e.target.value)}
+                  className="w-full text-sm border border-slate-300 rounded-xl px-4 py-2.5 pl-10 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
+                  placeholder="••••••••"
+                />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full mt-2 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2"
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>{authMode === "signup" ? "Register & Access Workspace" : "Sign In to Workspace"}</span>
+            </button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-slate-100">
+            <p className="text-xs text-slate-500 font-medium text-center mb-3">Explore Pre-populated Demo NGOs:</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleDemoLogin("admin@sevation.org")}
+                className="py-2.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl transition-colors text-center"
+              >
+                Seva Foundation India
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDemoLogin("admin@ruraltrust.org")}
+                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors text-center"
+              >
+                Rural Education Trust
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 text-center text-xs text-slate-400">
+            Secure tenant isolation & INR financial integrity enforced.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
@@ -460,7 +674,7 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Zone 3: Primary Action & Secure Org Switcher */}
+        {/* Zone 3: Primary Action & Org Switcher & Sign Out */}
         <div className="flex items-center gap-3 shrink-0">
           {session && (
             <div className="flex items-center gap-2">
@@ -486,6 +700,15 @@ export default function App() {
           >
             <Plus className="w-4 h-4" />
             <span>New Event</span>
+          </button>
+
+          <button
+            onClick={handleSignOut}
+            title="Sign Out"
+            className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            aria-label="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </header>

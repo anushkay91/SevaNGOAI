@@ -150,153 +150,171 @@ interface DatabaseSchema {
 const DB_FILE = path.join(process.cwd(), "data.json");
 
 function loadDb(): DatabaseSchema {
+  let db: DatabaseSchema | null = null;
   if (fs.existsSync(DB_FILE)) {
     try {
       const data = fs.readFileSync(DB_FILE, "utf-8");
-      return JSON.parse(data);
+      db = JSON.parse(data);
     } catch (e) {
       console.error("Error reading database file", e);
     }
   }
 
-  // Seed default data using INR (₹)
-  const orgId = "org-1";
-  const eventId = "evt-1";
-  const defaultDb: DatabaseSchema = {
-    organizations: [
-      { id: "org-1", name: "Seva Foundation India" },
-      { id: "org-2", name: "Rural Education Trust" }
-    ],
-    users: [
-      { userId: "usr-1", email: "admin@sevation.org", orgId: "org-1", role: "admin" }
-    ],
-    events: [
-      {
-        id: eventId,
-        orgId: orgId,
-        name: "Rural Clean Water & Health Camp 2026",
-        date: "2026-12-10",
-        description: "Community fundraising and medical camp for rural districts in Karnataka.",
-        budget: 500000, // ₹5,00,000
-        status: "active",
-        createdAt: new Date().toISOString()
-      }
-    ],
-    contributions: [
+  if (!db || !db.organizations || !db.users) {
+    db = {
+      organizations: [],
+      users: [],
+      events: [],
+      contributions: [],
+      expenses: [],
+      tasks: [],
+      auditLogs: []
+    };
+  }
+
+  // Ensure org-1 and org-2 exist
+  if (!db.organizations.some(o => o.id === "org-1")) {
+    db.organizations.push({ id: "org-1", name: "Seva Foundation India" });
+  }
+  if (!db.organizations.some(o => o.id === "org-2")) {
+    db.organizations.push({ id: "org-2", name: "Rural Education Trust" });
+  }
+
+  if (!db.users.some(u => u.email === "admin@sevation.org")) {
+    db.users.push({ userId: "usr-1", email: "admin@sevation.org", orgId: "org-1", role: "admin" });
+  }
+  if (!db.users.some(u => u.email === "admin@ruraltrust.org")) {
+    db.users.push({ userId: "usr-2", email: "admin@ruraltrust.org", orgId: "org-2", role: "admin" });
+  }
+
+  // Ensure org-1 has event evt-1
+  if (!db.events.some(e => e.orgId === "org-1")) {
+    const eventId = "evt-1";
+    db.events.push({
+      id: eventId,
+      orgId: "org-1",
+      name: "Rural Clean Water & Health Camp 2026",
+      date: "2026-12-10",
+      description: "Community fundraising and medical camp for rural districts in Karnataka.",
+      budget: 500000,
+      status: "active",
+      createdAt: new Date().toISOString()
+    });
+    db.contributions.push(
       {
         id: "con-1",
-        orgId: orgId,
+        orgId: "org-1",
         eventId: eventId,
         contributorName: "Bangalore Tech Philanthropy",
         contributionType: "monetary",
-        promisedAmount: 200000, // ₹2,00,000
+        promisedAmount: 200000,
         commitmentDate: "2026-09-01",
-        amountReceived: 150000, // ₹1,50,000
+        amountReceived: 150000,
         status: "partial",
         notes: "First tranche received via NEFT.",
         createdAt: new Date().toISOString()
       },
       {
         id: "con-2",
-        orgId: orgId,
+        orgId: "org-1",
         eventId: eventId,
         contributorName: "Smt. Kamala Sharma",
         contributionType: "monetary",
-        promisedAmount: 50000, // ₹50,000
+        promisedAmount: 50000,
         commitmentDate: "2026-09-15",
-        amountReceived: 50000, // ₹50,000
+        amountReceived: 50000,
         status: "received",
         notes: "Paid in full via UPI.",
         createdAt: new Date().toISOString()
+      }
+    );
+    db.expenses.push({
+      id: "exp-1",
+      orgId: "org-1",
+      eventId: eventId,
+      merchant: "Apex Medical Supplies Ltd",
+      date: "2026-09-25",
+      amount: 85000,
+      currency: "INR",
+      category: "Supplies",
+      description: "Medicines and diagnostic kits advance.",
+      receiptStatus: "verified",
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  // Ensure org-2 has event evt-2
+  if (!db.events.some(e => e.orgId === "org-2")) {
+    const eventId2 = "evt-2";
+    db.events.push({
+      id: eventId2,
+      orgId: "org-2",
+      name: "Village Digital Literacy Drive 2026",
+      date: "2026-11-20",
+      description: "Providing computer labs and digital training to rural schools in Hassan district.",
+      budget: 350000,
+      status: "active",
+      createdAt: new Date().toISOString()
+    });
+    db.contributions.push(
+      {
+        id: "con-201",
+        orgId: "org-2",
+        eventId: eventId2,
+        contributorName: "Karnataka IT Foundation",
+        contributionType: "monetary",
+        promisedAmount: 200000,
+        commitmentDate: "2026-09-05",
+        amountReceived: 200000,
+        status: "received",
+        notes: "Grant approved and credited.",
+        createdAt: new Date().toISOString()
       },
       {
-        id: "con-3",
-        orgId: orgId,
-        eventId: eventId,
-        contributorName: "GreenEarth Supplies",
+        id: "con-202",
+        orgId: "org-2",
+        eventId: eventId2,
+        contributorName: "Infosys Reach",
         contributionType: "in_kind",
         promisedAmount: 0,
-        inKindDescription: "50 Water Filtration Kits",
-        commitmentDate: "2026-09-20",
+        inKindDescription: "25 Refurbished Laptops",
+        commitmentDate: "2026-09-10",
         amountReceived: 0,
         status: "promised",
-        notes: "Delivery scheduled for camp date.",
+        notes: "Courier dispatch scheduled.",
         createdAt: new Date().toISOString()
       }
-    ],
-    expenses: [
-      {
-        id: "exp-1",
-        orgId: orgId,
-        eventId: eventId,
-        merchant: "Apex Medical Supplies Ltd",
-        date: "2026-09-25",
-        amount: 85000, // ₹85,000
-        currency: "INR",
-        category: "Supplies",
-        description: "Medicines and diagnostic kits advance.",
-        receiptStatus: "verified",
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "exp-2",
-        orgId: orgId,
-        eventId: eventId,
-        merchant: "Mysore Tent & Logistics",
-        date: "2026-10-02",
-        amount: 30000, // ₹30,000
-        currency: "INR",
-        category: "Venue & Catering",
-        description: "Stage and canopy rentals.",
-        receiptStatus: "pending",
-        isFlaggedMissingReceipt: false,
-        createdAt: new Date().toISOString()
-      }
-    ],
-    tasks: [
-      {
-        id: "tsk-1",
-        orgId: orgId,
-        eventId: eventId,
-        title: "Collect remaining balance from Bangalore Tech",
-        explanation: "Remaining balance of ₹50,000 is due ahead of the December camp.",
-        priority: "high",
-        dueDate: "2026-11-15",
-        responsiblePerson: "Rajesh Kumar",
-        status: "open",
-        source: "manual",
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "tsk-2",
-        orgId: orgId,
-        eventId: eventId,
-        title: "Verify Mysore Tent receipt",
-        explanation: "Expense of ₹30,000 is pending receipt document verification.",
-        priority: "medium",
-        dueDate: "2026-10-25",
-        responsiblePerson: "Priya Nair",
-        status: "open",
-        source: "ai_generated",
-        createdAt: new Date().toISOString()
-      }
-    ],
-    auditLogs: [
-      {
-        id: "aud-1",
-        orgId: orgId,
-        action: "CREATE",
-        entityType: "event",
-        entityId: eventId,
-        details: "Created event Rural Clean Water & Health Camp 2026 with budget ₹5,00,000",
-        userEmail: "admin@sevation.org",
-        timestamp: new Date().toISOString()
-      }
-    ]
-  };
+    );
+    db.expenses.push({
+      id: "exp-201",
+      orgId: "org-2",
+      eventId: eventId2,
+      merchant: "Global Tech Hardware",
+      date: "2026-09-18",
+      amount: 120000,
+      currency: "INR",
+      category: "Equipment",
+      description: "Networking routers and UPS units.",
+      receiptStatus: "verified",
+      createdAt: new Date().toISOString()
+    });
+    db.tasks.push({
+      id: "tsk-201",
+      orgId: "org-2",
+      eventId: eventId2,
+      title: "Inspect school computer lab wiring",
+      explanation: "Ensure earthing and power stability before laptop installation.",
+      priority: "high",
+      dueDate: "2026-11-05",
+      responsiblePerson: "Anand Sharma",
+      status: "open",
+      source: "manual",
+      createdAt: new Date().toISOString()
+    });
+  }
 
-  saveDb(defaultDb);
-  return defaultDb;
+  saveDb(db);
+  return db;
 }
 
 function saveDb(db: DatabaseSchema) {
@@ -324,20 +342,19 @@ interface AuthRequest extends Request {
 }
 
 const authenticateUser = (req: AuthRequest, res: Response, next: NextFunction) => {
-  // Derive session from Authorization header token or fallback to default test user session
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
 
-  const db = loadDb();
-  if (!db.users) db.users = [];
-  let user = db.users?.[0] || { userId: "usr-1", email: "admin@sevation.org", orgId: "org-1", role: "admin" };
-  if (token && token.startsWith("session-")) {
-    const found = db.users.find(u => u.userId === token.replace("session-", ""));
-    if (found) user = found;
+  if (!token || !token.startsWith("session-")) {
+    return res.status(401).json({ error: "Unauthorized access. Please sign in." });
   }
 
+  const db = loadDb();
+  const userId = token.replace("session-", "");
+  const user = db.users?.find(u => u.userId === userId);
+
   if (!user) {
-    return res.status(401).json({ error: "Unauthorized access. Valid session required." });
+    return res.status(401).json({ error: "Invalid session token. Please sign in again." });
   }
 
   req.user = user;
@@ -352,6 +369,53 @@ const requireOrgTenant = (req: AuthRequest, res: Response, next: NextFunction) =
 
 // API Routes
 
+// Sign Up Route with Community Verification
+app.post("/api/auth/signup", (req: Request, res: Response) => {
+  const { email, name, orgName, accessCode } = req.body;
+  if (!email || !orgName || !accessCode) {
+    return res.status(400).json({ error: "Email, organization name, and community access code are required." });
+  }
+
+  const db = loadDb();
+  const orgId = `org-${Date.now()}`;
+  const userId = `usr-${Date.now()}`;
+
+  const newOrg: Organization = { id: orgId, name: orgName };
+  const newUser: UserSession = { userId, email, orgId, role: "admin" };
+
+  db.organizations.push(newOrg);
+  db.users.push(newUser);
+  saveDb(db);
+
+  logAudit(orgId, "CREATE", "event", userId, `Community user registered: ${email} for ${orgName}`, email);
+  res.status(201).json({
+    success: true,
+    token: `session-${userId}`,
+    user: newUser,
+    organization: newOrg,
+    organizations: db.organizations
+  });
+});
+
+// Sign In Route
+app.post("/api/auth/signin", (req: Request, res: Response) => {
+  const { email, accessCode } = req.body;
+  const db = loadDb();
+  const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) {
+    return res.status(401).json({ error: "User not found. Please sign up with community verification." });
+  }
+
+  const org = db.organizations.find(o => o.id === user.orgId);
+  res.json({
+    success: true,
+    token: `session-${user.userId}`,
+    user,
+    organization: org,
+    organizations: db.organizations
+  });
+});
+
 // Authentication session info
 app.get("/api/auth/session", authenticateUser, (req: AuthRequest, res: Response) => {
   const db = loadDb();
@@ -363,7 +427,7 @@ app.get("/api/auth/session", authenticateUser, (req: AuthRequest, res: Response)
   });
 });
 
-// Switch organization session (for multi-org demo)
+// Switch organization session
 app.post("/api/auth/switch-org", authenticateUser, (req: AuthRequest, res: Response) => {
   const { orgId } = req.body;
   const db = loadDb();

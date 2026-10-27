@@ -3,16 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-    <meta name="description" content="An application built with Google AI Studio." />
-    <meta property="og:title" content="My Google AI Studio App" />
-    <meta property="og:description" content="An application built with Google AI Studio." />
+    <title>SevaTrack AI</title>
+    <meta name="description" content="NGO Contribution & Expense Coordinator with GenAI receipt OCR and follow-up assistant." />
+    <meta property="og:title" content="SevaTrack AI" />
+    <meta property="og:description" content="NGO Contribution & Expense Coordinator with GenAI receipt OCR and follow-up assistant." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // Gracefully handle Vite HMR websocket connection drops in container preview environment
+      window.addEventListener('unhandledrejection', event => {
+        if (event.reason && event.reason.message && (event.reason.message.includes('WebSocket') || event.reason.message.includes('websocket'))) {
+          event.preventDefault();
+        }
+      });
+      const OriginalWS = window.WebSocket;
+      if (OriginalWS) {
+        window.WebSocket = function(url, protocols) {
+          try {
+            const ws = new OriginalWS(url, protocols);
+            ws.onerror = (err) => {
+              // Suppress unhandled HMR socket error logs
+            };
+            return ws;
+          } catch (e) {
+            return {
+              send: () => {},
+              close: () => {},
+              addEventListener: () => {},
+              removeEventListener: () => {},
+              readyState: 3
+            };
+          }
+        };
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
