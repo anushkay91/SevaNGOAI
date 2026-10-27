@@ -701,26 +701,33 @@ app.post("/api/ai/generate-tasks", authenticateUser, async (req: AuthRequest, re
       model: "gemini-3.8-flash",
       contents: prompt,
       config: {
-        systemInstruction: "You generate structured operational follow-up tasks for NGO events. Return valid JSON array.",
+        systemInstruction: "You generate structured operational follow-up tasks for NGO events. Return valid JSON object containing a tasks array.",
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              explanation: { type: Type.STRING },
-              priority: { type: Type.STRING },
-              dueDate: { type: Type.STRING },
-              responsiblePerson: { type: Type.STRING }
-            },
-            required: ["title", "explanation", "priority"]
-          }
+          type: Type.OBJECT,
+          properties: {
+            tasks: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                  priority: { type: Type.STRING },
+                  dueDate: { type: Type.STRING },
+                  responsiblePerson: { type: Type.STRING }
+                },
+                required: ["title", "explanation", "priority"]
+              }
+            }
+          },
+          required: ["tasks"]
         }
       },
     });
 
-    const tasksProposed = JSON.parse(response.text || "[]");
+    const parsed = JSON.parse(response.text || "{}");
+    const tasksProposed = parsed.tasks || [];
     res.json({ success: true, tasks: tasksProposed });
   } catch (error: any) {
     console.error("AI Task Generation Error:", error);

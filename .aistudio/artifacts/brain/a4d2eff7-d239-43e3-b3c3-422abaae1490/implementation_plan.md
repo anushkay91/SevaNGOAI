@@ -1,77 +1,24 @@
-# Implementation Plan — SevaTrack AI Remediation & Audit
+# Implementation Plan — Final Evaluation Remediation (SevaTrack AI)
 
-This plan outlines the remediation strategy for SevaTrack AI to address security, financial integrity (using Indian Rupees ₹ INR), architecture, efficiency, testing, and accessibility according to the 8-phase audit requirements.
+## Objective
+Eliminate the 0/100 testing score by introducing a comprehensive test suite (`vitest` + `supertest`) covering financial calculations, API integration routes, tenant authorization, and security boundaries.
 
-## User Review & Critical Decisions
+## Phase 1: Baseline & Defect Analysis
+- **Defect 1 (Testing 0/100)**: No test runner or test files configured in `package.json`.
+- **Defect 2 (Verification Gaps)**: Financial calculations and API tenancy checks lacked automated regression assertions.
 
-> [!IMPORTANT]
-> - **Currency**: All financial records, budgets, contributions, and expenses will be tracked and displayed in Indian Rupees (₹ INR).
-> - **Authentication & Authorization**: Server-side session token authentication with role-based organization membership, ensuring tenant isolation and secure receipt access.
-> - **Persistence**: File-based JSON storage with robust transactional audit logging and concurrency locking.
+## Phase 2: Automated Testing Suite
+1. **Unit Tests (`src/financial.test.ts`)**:
+   - Monetary contribution calculations (promised vs received, partial payments).
+   - In-kind contribution separation.
+   - Budget utilization and cash balance formulas.
+   - INR currency formatting.
+2. **Integration & Security Tests (`server.test.ts`)**:
+   - Authentication session validation.
+   - Organization tenant isolation (unauthorized access to other tenant's events/records).
+   - Event and contribution CRUD operations.
+   - Expense verification and receipt authorization checks.
 
----
-
-## 1. Overview & Core Concept
-
-- **What It Does**: Centralizes event workspaces, contribution tracking (promised vs. received, monetary vs. in-kind), expense management, receipt OCR extraction via Gemini, AI follow-up task generation, and financial dashboards for NGOs.
-- **Target Audience / Persona**: NGO administrators, financial officers, and event coordinators in India managing fundraising and project expenditures.
-- **Key Value**: Guaranteed financial integrity (INR), secure tenant isolation, human-verified receipt OCR, and actionable AI follow-up tasks.
-
----
-
-## 2. User Experience & Visual Design
-
-- **Key User Flows**: 
-  1. Secure authentication and organization selection.
-  2. Event creation and workspace management.
-  3. Recording contributions (monetary pledges, partial payments, in-kind donations) in ₹ INR.
-  4. Manual expense entry and AI receipt OCR upload with side-by-side verification.
-  5. Generating and approving AI follow-up tasks.
-  6. Viewing verified financial totals and immutable audit trail.
-- **Visual Identity & Theme**:
-  - *Aesthetic Direction*: Clean professional SaaS dashboard (neutral slate `#0F172A`, cool gray `#1E293B`, crisp white surface, indigo primary accent `#4F46E5`).
-  - *Typography*: Clean sans-serif UI font paired with monospace tabular numerals (`font-mono tabular-nums`) for all monetary values and tables.
-  - *Accessibility*: WCAG 2.2 AA contrast, keyboard navigation, visible focus rings, and semantic labels.
-
----
-
-## 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: Currency Standardization (INR ₹)**
-  - *Chosen Approach*: Enforce ₹ INR across all monetary inputs, calculations, and displays.
-  - *Why*: Direct alignment with Indian NGO operational needs.
-- **Decision 2: Server-Side Authorization & Token Auth**
-  - *Chosen Approach*: Replace insecure client-supplied headers (`x-org-id`) with server-side session token validation and robust organization tenancy checks.
-  - *Why*: Eliminates Insecure Direct Object Reference (IDOR) and cross-tenant data leaks.
-- **Decision 3: Human-in-the-Loop Receipt Verification**
-  - *Chosen Approach*: AI OCR (`gemini-3.8-flash`) extracts candidate receipt data into an editable review modal before committing to the database.
-  - *Why*: Ensures 100% financial accuracy and prevents unverified OCR hallucinations.
-
----
-
-## 4. Technical Architecture & Data Strategy
-
-```
-┌────────────────────────────────────────────────────────┐
-│                      Client Browser                    │
-│   (React 19 SPA, Tailwind CSS, Accessible UI, INR)     │
-└──────────────────────────┬─────────────────────────────┘
-                           │ HTTPS / JSON / Multipart
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│               Express Server (`server.ts`)             │
-│   - Session Auth & Tenant Middleware                   │
-│   - File Upload & MIME / Signature Validation          │
-│   - Gemini AI Service (`gemini-3.8-flash` OCR & Tasks) │
-└──────────────────────────┬─────────────────────────────┘
-                           │ Secure CRUD & Transactions
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│               Persistent Storage & Audit Log           │
-│   - Encapsulated JSON Store (`data.json`)              │
-│   - Immutable Audit Trail & Role-based Access Control  │
-└────────────────────────────────────────────────────────┘
-```
-
-- **Data Models**: Organizations, Users/Sessions, Events, Contributions (Monetary / In-Kind), Expenses (Receipts, OCR, Status), Tasks (Manual / AI Generated), Audit Logs.
-- **Security Controls**: File upload size limits (10MB), MIME signature checks, secure random filenames, rate limiting on AI endpoints, safe error handling without internal stack traces.
+## Phase 3: Discoverability & CI Scripts
+- Add `"test": "vitest run"` and `"test:coverage": "vitest run --coverage"` to `package.json`.
+- Ensure tests execute successfully with nonzero exit codes on failure.
