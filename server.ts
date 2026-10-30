@@ -160,7 +160,7 @@ function loadDb(): DatabaseSchema {
     }
   }
 
-  if (!db || !db.organizations || !db.users) {
+  if (!db || !Array.isArray(db.organizations) || !Array.isArray(db.users)) {
     db = {
       organizations: [],
       users: [],
@@ -172,150 +172,78 @@ function loadDb(): DatabaseSchema {
     };
   }
 
-  // Ensure only valid core organizations exist, filtering out test/duplicate orgs like "smile"
-  const validOrgIds = ["org-1", "org-2", "org-3"];
-  db.organizations = db.organizations.filter(o => validOrgIds.includes(o.id) || ["Seva Foundation India", "Rural Education Trust", "Sign In Community"].includes(o.name));
-
-  if (!db.organizations.some(o => o.id === "org-1")) {
-    db.organizations.push({ id: "org-1", name: "Seva Foundation India" });
-  }
-  if (!db.organizations.some(o => o.id === "org-2")) {
-    db.organizations.push({ id: "org-2", name: "Rural Education Trust" });
-  }
-  if (!db.organizations.some(o => o.id === "org-3")) {
-    db.organizations.push({ id: "org-3", name: "Sign In Community" });
+  // Ensure default demo organizations exist while keeping user-registered organizations
+  const defaultOrgs = [
+    { id: "org-1", name: "Seva Foundation India" },
+    { id: "org-2", name: "Rural Education Trust" },
+    { id: "org-3", name: "Sign In Community" }
+  ];
+  for (const org of defaultOrgs) {
+    if (!db.organizations.some(o => o.id === org.id)) {
+      db.organizations.push(org);
+    }
   }
 
-  if (!db.users.some(u => u.email === "admin@sevation.org")) {
-    db.users.push({ userId: "usr-1", email: "admin@sevation.org", orgId: "org-1", role: "admin" });
-  }
-  if (!db.users.some(u => u.email === "admin@ruraltrust.org")) {
-    db.users.push({ userId: "usr-2", email: "admin@ruraltrust.org", orgId: "org-2", role: "admin" });
-  }
-  if (!db.users.some(u => u.email === "admin@signincommunity.org")) {
-    db.users.push({ userId: "usr-3", email: "admin@signincommunity.org", orgId: "org-3", role: "admin" });
+  // Ensure default demo users exist while keeping registered users
+  const defaultUsers = [
+    { userId: "usr-1", email: "admin@sevation.org", orgId: "org-1", role: "admin" as const },
+    { userId: "usr-2", email: "admin@ruraltrust.org", orgId: "org-2", role: "admin" as const },
+    { userId: "usr-3", email: "admin@signincommunity.org", orgId: "org-3", role: "admin" as const }
+  ];
+  for (const user of defaultUsers) {
+    if (!db.users.some(u => u.userId === user.userId || u.email.toLowerCase() === user.email.toLowerCase())) {
+      db.users.push(user);
+    }
   }
 
-  // Ensure org-1 has event evt-1
-  if (!db.events.some(e => e.orgId === "org-1")) {
-    const eventId = "evt-1";
+  // Ensure org-3 has the Rest Login Community Workspace Event
+  if (!db.events.some(e => e.orgId === "org-3")) {
+    const eventId3 = "evt-3";
     db.events.push({
-      id: eventId,
-      orgId: "org-1",
-      name: "Rural Clean Water & Health Camp 2026",
-      date: "2026-12-10",
-      description: "Community fundraising and medical camp for rural districts in Karnataka.",
+      id: eventId3,
+      orgId: "org-3",
+      name: "Rest Login Community Workspace Event",
+      date: "2026-12-31",
+      description: "Rest Login Community Workspace Event for management and tracking.",
       budget: 500000,
       status: "active",
       createdAt: new Date().toISOString()
     });
-    db.contributions.push(
-      {
-        id: "con-1",
-        orgId: "org-1",
-        eventId: eventId,
-        contributorName: "Bangalore Tech Philanthropy",
-        contributionType: "monetary",
-        promisedAmount: 200000,
-        commitmentDate: "2026-09-01",
-        amountReceived: 150000,
-        status: "partial",
-        notes: "First tranche received via NEFT.",
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "con-2",
-        orgId: "org-1",
-        eventId: eventId,
-        contributorName: "Smt. Kamala Sharma",
-        contributionType: "monetary",
-        promisedAmount: 50000,
-        commitmentDate: "2026-09-15",
-        amountReceived: 50000,
-        status: "received",
-        notes: "Paid in full via UPI.",
-        createdAt: new Date().toISOString()
-      }
-    );
+    db.contributions.push({
+      id: "con-301",
+      orgId: "org-3",
+      eventId: eventId3,
+      contributorName: "Community Supporter",
+      contributionType: "monetary",
+      promisedAmount: 200000,
+      commitmentDate: "2026-09-01",
+      amountReceived: 200000,
+      status: "received",
+      notes: "Community contribution received.",
+      createdAt: new Date().toISOString()
+    });
     db.expenses.push({
-      id: "exp-1",
-      orgId: "org-1",
-      eventId: eventId,
-      merchant: "Apex Medical Supplies Ltd",
+      id: "exp-301",
+      orgId: "org-3",
+      eventId: eventId3,
+      merchant: "Community Logistics",
       date: "2026-09-25",
-      amount: 85000,
+      amount: 50000,
       currency: "INR",
       category: "Supplies",
-      description: "Medicines and diagnostic kits advance.",
-      receiptStatus: "verified",
-      createdAt: new Date().toISOString()
-    });
-  }
-
-  // Ensure org-2 has event evt-2
-  if (!db.events.some(e => e.orgId === "org-2")) {
-    const eventId2 = "evt-2";
-    db.events.push({
-      id: eventId2,
-      orgId: "org-2",
-      name: "Village Digital Literacy Drive 2026",
-      date: "2026-11-20",
-      description: "Providing computer labs and digital training to rural schools in Hassan district.",
-      budget: 350000,
-      status: "active",
-      createdAt: new Date().toISOString()
-    });
-    db.contributions.push(
-      {
-        id: "con-201",
-        orgId: "org-2",
-        eventId: eventId2,
-        contributorName: "Karnataka IT Foundation",
-        contributionType: "monetary",
-        promisedAmount: 200000,
-        commitmentDate: "2026-09-05",
-        amountReceived: 200000,
-        status: "received",
-        notes: "Grant approved and credited.",
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "con-202",
-        orgId: "org-2",
-        eventId: eventId2,
-        contributorName: "Infosys Reach",
-        contributionType: "in_kind",
-        promisedAmount: 0,
-        inKindDescription: "25 Refurbished Laptops",
-        commitmentDate: "2026-09-10",
-        amountReceived: 0,
-        status: "promised",
-        notes: "Courier dispatch scheduled.",
-        createdAt: new Date().toISOString()
-      }
-    );
-    db.expenses.push({
-      id: "exp-201",
-      orgId: "org-2",
-      eventId: eventId2,
-      merchant: "Global Tech Hardware",
-      date: "2026-09-18",
-      amount: 120000,
-      currency: "INR",
-      category: "Equipment",
-      description: "Networking routers and UPS units.",
+      description: "Community event setup advance.",
       receiptStatus: "verified",
       createdAt: new Date().toISOString()
     });
     db.tasks.push({
-      id: "tsk-201",
-      orgId: "org-2",
-      eventId: eventId2,
-      title: "Inspect school computer lab wiring",
-      explanation: "Ensure earthing and power stability before laptop installation.",
+      id: "tsk-301",
+      orgId: "org-3",
+      eventId: eventId3,
+      title: "Review community workspace ledger",
+      explanation: "Ensure all contributions and expenses are verified for the Rest Login Community Workspace Event.",
       priority: "high",
-      dueDate: "2026-11-05",
-      responsiblePerson: "Anand Sharma",
+      dueDate: "2026-11-15",
+      responsiblePerson: "Community Admin",
       status: "open",
       source: "manual",
       createdAt: new Date().toISOString()

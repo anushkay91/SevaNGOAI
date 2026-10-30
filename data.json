@@ -1,31 +1,11 @@
 {
   "organizations": [
     {
-      "id": "org-1",
-      "name": "Seva Foundation India"
-    },
-    {
-      "id": "org-2",
-      "name": "Rural Education Trust"
-    },
-    {
       "id": "org-3",
       "name": "Sign In Community"
     }
   ],
   "users": [
-    {
-      "userId": "usr-1",
-      "email": "admin@sevation.org",
-      "orgId": "org-1",
-      "role": "admin"
-    },
-    {
-      "userId": "usr-2",
-      "email": "admin@ruraltrust.org",
-      "orgId": "org-2",
-      "role": "admin"
-    },
     {
       "userId": "usr-3",
       "email": "admin@signincommunity.org",
@@ -35,187 +15,70 @@
   ],
   "events": [
     {
-      "id": "evt-1",
-      "orgId": "org-1",
-      "name": "Rural Clean Water & Health Camp 2026",
-      "date": "2026-12-10",
-      "description": "Community fundraising and medical camp for rural districts in Karnataka.",
+      "id": "evt-3",
+      "orgId": "org-3",
+      "name": "Rest Login Community Workspace Event",
+      "date": "2026-12-31",
+      "description": "Rest Login Community Workspace Event for management and tracking.",
       "budget": 500000,
       "status": "active",
       "createdAt": "2026-10-27T10:56:57.977Z"
-    },
-    {
-      "id": "evt-2",
-      "orgId": "org-2",
-      "name": "Village Digital Literacy Drive 2026",
-      "date": "2026-11-20",
-      "description": "Providing computer labs and digital training to rural schools in Hassan district.",
-      "budget": 350000,
-      "status": "active",
-      "createdAt": "2026-10-27T11:31:24.358Z"
     }
   ],
   "contributions": [
     {
-      "id": "con-1",
-      "orgId": "org-1",
-      "eventId": "evt-1",
-      "contributorName": "Bangalore Tech Philanthropy",
+      "id": "con-301",
+      "orgId": "org-3",
+      "eventId": "evt-3",
+      "contributorName": "Community Supporter",
       "contributionType": "monetary",
       "promisedAmount": 200000,
       "commitmentDate": "2026-09-01",
-      "amountReceived": 150000,
-      "status": "partial",
-      "notes": "First tranche received via NEFT.",
-      "createdAt": "2026-10-27T10:56:57.977Z"
-    },
-    {
-      "id": "con-2",
-      "orgId": "org-1",
-      "eventId": "evt-1",
-      "contributorName": "Smt. Kamala Sharma",
-      "contributionType": "monetary",
-      "promisedAmount": 50000,
-      "commitmentDate": "2026-09-15",
-      "amountReceived": 50000,
-      "status": "received",
-      "notes": "Paid in full via UPI.",
-      "createdAt": "2026-10-27T10:56:57.977Z"
-    },
-    {
-      "id": "con-3",
-      "orgId": "org-1",
-      "eventId": "evt-1",
-      "contributorName": "GreenEarth Supplies",
-      "contributionType": "in_kind",
-      "promisedAmount": 0,
-      "inKindDescription": "50 Water Filtration Kits",
-      "commitmentDate": "2026-09-20",
-      "amountReceived": 0,
-      "status": "promised",
-      "notes": "Delivery scheduled for camp date.",
-      "createdAt": "2026-10-27T10:56:57.977Z"
-    },
-    {
-      "id": "con-201",
-      "orgId": "org-2",
-      "eventId": "evt-2",
-      "contributorName": "Karnataka IT Foundation",
-      "contributionType": "monetary",
-      "promisedAmount": 200000,
-      "commitmentDate": "2026-09-05",
       "amountReceived": 200000,
       "status": "received",
-      "notes": "Grant approved and credited.",
-      "createdAt": "2026-10-27T11:31:24.358Z"
-    },
-    {
-      "id": "con-202",
-      "orgId": "org-2",
-      "eventId": "evt-2",
-      "contributorName": "Infosys Reach",
-      "contributionType": "in_kind",
-      "promisedAmount": 0,
-      "inKindDescription": "25 Refurbished Laptops",
-      "commitmentDate": "2026-09-10",
-      "amountReceived": 0,
-      "status": "promised",
-      "notes": "Courier dispatch scheduled.",
-      "createdAt": "2026-10-27T11:31:24.358Z"
+      "notes": "Community contribution received.",
+      "createdAt": "2026-10-27T10:56:57.977Z"
     }
   ],
   "expenses": [
     {
-      "id": "exp-1",
-      "orgId": "org-1",
-      "eventId": "evt-1",
-      "merchant": "Apex Medical Supplies Ltd",
+      "id": "exp-301",
+      "orgId": "org-3",
+      "eventId": "evt-3",
+      "merchant": "Community Logistics",
       "date": "2026-09-25",
-      "amount": 85000,
+      "amount": 50000,
       "currency": "INR",
       "category": "Supplies",
-      "description": "Medicines and diagnostic kits advance.",
+      "description": "Community event setup advance.",
       "receiptStatus": "verified",
       "createdAt": "2026-10-27T10:56:57.977Z"
-    },
-    {
-      "id": "exp-2",
-      "orgId": "org-1",
-      "eventId": "evt-1",
-      "merchant": "Mysore Tent & Logistics",
-      "date": "2026-10-02",
-      "amount": 30000,
-      "currency": "INR",
-      "category": "Venue & Catering",
-      "description": "Stage and canopy rentals.",
-      "receiptStatus": "pending",
-      "isFlaggedMissingReceipt": false,
-      "createdAt": "2026-10-27T10:56:57.977Z"
-    },
-    {
-      "id": "exp-201",
-      "orgId": "org-2",
-      "eventId": "evt-2",
-      "merchant": "Global Tech Hardware",
-      "date": "2026-09-18",
-      "amount": 120000,
-      "currency": "INR",
-      "category": "Equipment",
-      "description": "Networking routers and UPS units.",
-      "receiptStatus": "verified",
-      "createdAt": "2026-10-27T11:31:24.358Z"
     }
   ],
   "tasks": [
     {
-      "id": "tsk-1",
-      "orgId": "org-1",
-      "eventId": "evt-1",
-      "title": "Collect remaining balance from Bangalore Tech",
-      "explanation": "Remaining balance of ₹50,000 is due ahead of the December camp.",
+      "id": "tsk-301",
+      "orgId": "org-3",
+      "eventId": "evt-3",
+      "title": "Review community workspace ledger",
+      "explanation": "Ensure all contributions and expenses are verified for the Rest Login Community Workspace Event.",
       "priority": "high",
       "dueDate": "2026-11-15",
-      "responsiblePerson": "Rajesh Kumar",
+      "responsiblePerson": "Community Admin",
       "status": "open",
       "source": "manual",
       "createdAt": "2026-10-27T10:56:57.977Z"
-    },
-    {
-      "id": "tsk-2",
-      "orgId": "org-1",
-      "eventId": "evt-1",
-      "title": "Verify Mysore Tent receipt",
-      "explanation": "Expense of ₹30,000 is pending receipt document verification.",
-      "priority": "medium",
-      "dueDate": "2026-10-25",
-      "responsiblePerson": "Priya Nair",
-      "status": "open",
-      "source": "ai_generated",
-      "createdAt": "2026-10-27T10:56:57.977Z"
-    },
-    {
-      "id": "tsk-201",
-      "orgId": "org-2",
-      "eventId": "evt-2",
-      "title": "Inspect school computer lab wiring",
-      "explanation": "Ensure earthing and power stability before laptop installation.",
-      "priority": "high",
-      "dueDate": "2026-11-05",
-      "responsiblePerson": "Anand Sharma",
-      "status": "open",
-      "source": "manual",
-      "createdAt": "2026-10-27T11:31:24.358Z"
     }
   ],
   "auditLogs": [
     {
-      "id": "aud-1",
-      "orgId": "org-1",
+      "id": "aud-301",
+      "orgId": "org-3",
       "action": "CREATE",
       "entityType": "event",
-      "entityId": "evt-1",
-      "details": "Created event Rural Clean Water & Health Camp 2026 with budget ₹5,00,000",
-      "userEmail": "admin@sevation.org",
+      "entityId": "evt-3",
+      "details": "Created Rest Login Community Workspace Event",
+      "userEmail": "admin@signincommunity.org",
       "timestamp": "2026-10-27T10:56:57.977Z"
     }
   ]
