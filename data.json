@@ -7,6 +7,10 @@
     {
       "id": "org-2",
       "name": "Rural Education Trust"
+    },
+    {
+      "id": "org-3",
+      "name": "Sign In Community"
     }
   ],
   "users": [
@@ -20,6 +24,12 @@
       "userId": "usr-2",
       "email": "admin@ruraltrust.org",
       "orgId": "org-2",
+      "role": "admin"
+    },
+    {
+      "userId": "usr-3",
+      "email": "admin@signincommunity.org",
+      "orgId": "org-3",
       "role": "admin"
     }
   ],
