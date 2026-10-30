@@ -172,12 +172,18 @@ function loadDb(): DatabaseSchema {
     };
   }
 
-  // Ensure org-1 and org-2 exist
+  // Ensure only valid core organizations exist, filtering out test/duplicate orgs like "smile"
+  const validOrgIds = ["org-1", "org-2", "org-3"];
+  db.organizations = db.organizations.filter(o => validOrgIds.includes(o.id) || ["Seva Foundation India", "Rural Education Trust", "Sign In Community"].includes(o.name));
+
   if (!db.organizations.some(o => o.id === "org-1")) {
     db.organizations.push({ id: "org-1", name: "Seva Foundation India" });
   }
   if (!db.organizations.some(o => o.id === "org-2")) {
     db.organizations.push({ id: "org-2", name: "Rural Education Trust" });
+  }
+  if (!db.organizations.some(o => o.id === "org-3")) {
+    db.organizations.push({ id: "org-3", name: "Sign In Community" });
   }
 
   if (!db.users.some(u => u.email === "admin@sevation.org")) {
@@ -185,6 +191,9 @@ function loadDb(): DatabaseSchema {
   }
   if (!db.users.some(u => u.email === "admin@ruraltrust.org")) {
     db.users.push({ userId: "usr-2", email: "admin@ruraltrust.org", orgId: "org-2", role: "admin" });
+  }
+  if (!db.users.some(u => u.email === "admin@signincommunity.org")) {
+    db.users.push({ userId: "usr-3", email: "admin@signincommunity.org", orgId: "org-3", role: "admin" });
   }
 
   // Ensure org-1 has event evt-1
@@ -595,15 +604,18 @@ app.post("/api/contributions", authenticateUser, (req: AuthRequest, res: Respons
 // Expenses & Receipts with private storage and authorization
 app.get("/api/receipts/:filename", authenticateUser, (req: AuthRequest, res: Response) => {
   const orgId = req.user!.orgId;
-  const filename = req.params.filename;
+  const safeFilename = path.basename(req.params.filename);
+  if (!safeFilename || safeFilename.includes("..") || safeFilename.includes("/") || safeFilename.includes("\\")) {
+    return res.status(400).json({ error: "Invalid filename or path traversal attempt detected." });
+  }
   
   const db = loadDb();
-  const expense = db.expenses.find(e => e.orgId === orgId && e.receiptPath === `/api/receipts/${filename}`);
+  const expense = db.expenses.find(e => e.orgId === orgId && e.receiptPath === `/api/receipts/${safeFilename}`);
   if (!expense) {
     return res.status(404).json({ error: "Receipt not found or unauthorized access" });
   }
 
-  const filePath = path.join(uploadsDir, filename);
+  const filePath = path.join(uploadsDir, safeFilename);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: "File not found on disk" });
   }
@@ -619,6 +631,11 @@ app.post("/api/expenses", authenticateUser, upload.single("receipt"), async (req
     return res.status(400).json({ error: "Event ID, merchant, and amount are required." });
   }
 
+  const numericAmount = Number(amount);
+  if (isNaN(numericAmount) || numericAmount < 0) {
+    return res.status(400).json({ error: "Invalid expense amount. Must be a valid non-negative number." });
+  }
+
   const db = loadDb();
   const event = db.events.find(e => e.id === eventId && e.orgId === orgId);
   if (!event) return res.status(403).json({ error: "Access denied to event workspace" });
@@ -629,7 +646,7 @@ app.post("/api/expenses", authenticateUser, upload.single("receipt"), async (req
   }
 
   const existing = db.expenses.find(
-    e => e.orgId === orgId && e.eventId === eventId && e.merchant.toLowerCase() === merchant.toLowerCase() && Number(e.amount) === Number(amount) && e.date === date
+    e => e.orgId === orgId && e.eventId === eventId && e.merchant.toLowerCase() === merchant.toLowerCase() && Number(e.amount) === Number(numericAmount) && e.date === date
   );
 
   const newExpense: Expense = {
@@ -638,7 +655,7 @@ app.post("/api/expenses", authenticateUser, upload.single("receipt"), async (req
     eventId,
     merchant,
     date: date || new Date().toISOString().split("T")[0],
-    amount: Number(amount) || 0,
+    amount: numericAmount,
     currency: "INR",
     category: category || "General",
     description: description || "",
@@ -662,7 +679,23 @@ app.put("/api/expenses/:id", authenticateUser, (req: AuthRequest, res: Response)
   const index = db.expenses.findIndex(e => e.id === id && e.orgId === orgId);
   if (index === -1) return res.status(404).json({ error: "Expense not found" });
 
-  const updated = { ...db.expenses[index], ...req.body };
+  const allowedFields = ["merchant", "date", "amount", "category", "description", "receiptStatus"];
+  const updates: any = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      updates[field] = req.body[field];
+    }
+  }
+
+  if (updates.amount !== undefined) {
+    const num = Number(updates.amount);
+    if (isNaN(num) || num < 0) {
+      return res.status(400).json({ error: "Amount must be a non-negative number" });
+    }
+    updates.amount = num;
+  }
+
+  const updated = { ...db.expenses[index], ...updates, orgId };
   db.expenses[index] = updated;
   saveDb(db);
   logAudit(orgId, "UPDATE", "expense", id, `Updated expense at ${updated.merchant} (status: ${updated.receiptStatus})`, req.user!.email);
